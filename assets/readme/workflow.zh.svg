@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg"
      width="1200" height="280" viewBox="0 0 1200 280"
      role="img" aria-labelledby="title desc">
-  <title id="title">oil-showcase 本地离线渲染流程</title>
-  <desc id="desc">四步确定性本地渲染管线：真实素材采集、编写规格 JSON、本地无头浏览器 2 倍缩放渲染与溢出检查、输出多比例高清 PNG 与离线总览页。</desc>
+  <title id="title">oil-showcase 本地渲染流程</title>
+  <desc id="desc">四步确定性本地渲染管线：真实素材采集、编写规格 JSON、本地无头浏览器 2 倍缩放渲染与溢出检查、输出多比例高清 PNG 与总览页。</desc>
 
   <!-- 外层暖纸画板（兼容 GitHub 浅色与深色模式） -->
   <rect x="1" y="1" width="1198" height="278" rx="20" fill="#FAF8F1" stroke="#DCDED3" stroke-width="1.5"/>
@@ -15,7 +15,7 @@
           font-size="16" font-weight="500" letter-spacing="1.0">确定性本地渲染管线</text>
     <text x="1164" y="42" text-anchor="end" fill="#5D6058"
           font-family="ui-monospace, SFMono-Regular, Menlo, 'PingFang SC', sans-serif"
-          font-size="16" font-weight="500" letter-spacing="0.6">100% 本地离线 · 零生图依赖</text>
+          font-size="16" font-weight="500" letter-spacing="0.6">本地渲染 · 零生图依赖</text>
     <line x1="36" y1="58" x2="1164" y2="58" stroke="#E4E1D6" stroke-width="1"/>
   </g>
 
@@ -89,7 +89,7 @@
           font-size="22" font-weight="600">本地无头渲染</text>
     <text x="20" y="114" fill="#5D6058"
           font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
-          font-size="18" font-weight="400">内置字体 2× 离线排版</text>
+          font-size="18" font-weight="400">内置字体 2× 本地排版</text>
     <text x="20" y="142" fill="#5D6058"
           font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
           font-size="18" font-weight="400">自动检查解码与溢出</text>

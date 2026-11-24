@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg"
      width="1200" height="280" viewBox="0 0 1200 280"
      role="img" aria-labelledby="title desc">
-  <title id="title">oil-showcase offline rendering pipeline</title>
+  <title id="title">oil-showcase local rendering pipeline</title>
   <desc id="desc">Four-stage deterministic local workflow: Real Assets, Spec JSON, Local Chrome at 2x scale with bundled fonts and DOM checks, and high-resolution PNG exports plus an offline contact sheet.</desc>
 
   <!-- Outer warm-paper board (self-contained for both GitHub light and dark themes) -->
@@ -15,7 +15,7 @@
           font-size="16" font-weight="500" letter-spacing="1.2">DETERMINISTIC LOCAL PIPELINE</text>
     <text x="1164" y="42" text-anchor="end" fill="#5D6058"
           font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
-          font-size="16" font-weight="500" letter-spacing="0.8">OFFLINE · ZERO IMAGE GEN</text>
+          font-size="16" font-weight="500" letter-spacing="0.8">LOCAL CHROME · ZERO IMAGE GEN</text>
     <line x1="36" y1="58" x2="1164" y2="58" stroke="#E4E1D6" stroke-width="1"/>
   </g>
 
@@ -89,7 +89,7 @@
           font-size="22" font-weight="600">Local Chrome @2x</text>
     <text x="20" y="114" fill="#5D6058"
           font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
-          font-size="18" font-weight="400">Offline bundled fonts</text>
+          font-size="18" font-weight="400">Bundled OFL fonts</text>
     <text x="20" y="142" fill="#5D6058"
           font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
           font-size="18" font-weight="400">DOM overflow check</text>

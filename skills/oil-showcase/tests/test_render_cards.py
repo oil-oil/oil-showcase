@@ -195,6 +195,153 @@ class RenderCardsValidationTest(unittest.TestCase):
         self.assertFalse(payload["ok"])
         self.assertGreaterEqual(len(payload["errors"]), 8)
 
+    def test_font_license_and_notices_present(self) -> None:
+        fonts_dir = SKILL_ROOT / "assets" / "fonts"
+        ofl = fonts_dir / "OFL.txt"
+        notices = fonts_dir / "THIRD-PARTY-NOTICES.txt"
+        self.assertTrue(ofl.is_file(), "Missing OFL.txt in assets/fonts/")
+        self.assertTrue(notices.is_file(), "Missing THIRD-PARTY-NOTICES.txt in assets/fonts/")
+        ofl_text = ofl.read_text(encoding="utf-8")
+        self.assertIn("SIL OPEN FONT LICENSE Version 1.1", ofl_text)
+        self.assertIn("PERMISSION & CONDITIONS", ofl_text)
+        notices_text = notices.read_text(encoding="utf-8")
+        for required in ("Inter", "JetBrains Mono", "Playfair Display", "SIL Open Font License 1.1"):
+            self.assertIn(required, notices_text)
+
+    def test_position_css_injection_rejected(self) -> None:
+        spec = self.tmp_dir / "css-inject.json"
+        spec.write_text(
+            json.dumps(
+                {
+                    "cards": [
+                        {
+                            "id": "bad-pos-1",
+                            "layout": "before-after",
+                            "title": "Security check",
+                            "before": {
+                                "image": "sample.png",
+                                "position": "center; background:url(http://evil.example/a)",
+                            },
+                            "after": {
+                                "image": "sample.png",
+                                "position": "top); color:red",
+                            },
+                        },
+                        {
+                            "id": "bad-pos-2",
+                            "layout": "module-bento",
+                            "title": "Security check 2",
+                            "items": [
+                                {"image": "sample.png", "position": "url(https://evil.example/x)"},
+                                {"image": "sample.png", "position": "left 10px top 20px"},
+                            ],
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        rc, payload = run_cli("render", str(spec), "--out-dir", str(self.tmp_dir / "out"))
+        self.assertEqual(rc, 1)
+        self.assertFalse(payload["ok"])
+        pos_errors = [err for err in payload["errors"] if "position" in err]
+        self.assertEqual(len(pos_errors), 3, payload["errors"])
+
+    def test_invalid_scale_and_wait_ms_rejected(self) -> None:
+        fixture = self.tmp_dir / "dummy.html"
+        fixture.write_text("<!doctype html><html><body>ok</body></html>", encoding="utf-8")
+
+        for bad_scale in ("0", "-1", "5"):
+            rc_s, payload_s = run_cli(
+                "shoot", str(fixture), "--out", str(self.tmp_dir / "s.png"), "--scale", bad_scale
+            )
+            self.assertEqual(rc_s, 1, payload_s)
+            self.assertFalse(payload_s["ok"])
+            self.assertTrue(any("--scale" in e for e in payload_s["errors"]))
+
+            rc_c, payload_c = run_cli(
+                "capture", str(fixture), "--out", str(self.tmp_dir / "c.png"), "--scale", bad_scale
+            )
+            self.assertEqual(rc_c, 1, payload_c)
+            self.assertFalse(payload_c["ok"])
+            self.assertTrue(any("--scale" in e for e in payload_c["errors"]))
+
+        for bad_wait in ("-1", "15001", "99999"):
+            rc_w, payload_w = run_cli(
+                "capture",
+                str(fixture),
+                "--out",
+                str(self.tmp_dir / "w.png"),
+                "--wait-ms",
+                bad_wait,
+            )
+            self.assertEqual(rc_w, 1, payload_w)
+            self.assertFalse(payload_w["ok"])
+            self.assertTrue(any("--wait-ms" in e for e in payload_w["errors"]))
+
+    def test_input_image_overwrite_guard(self) -> None:
+        out_dir = self.tmp_dir / "guard-out"
+        input_png = out_dir / "png" / "conflict-card.png"
+        make_png(input_png, 80, 60, (120, 40, 60, 255))
+        original_bytes = input_png.read_bytes()
+
+        spec = self.tmp_dir / "overwrite.json"
+        spec.write_text(
+            json.dumps(
+                {
+                    "cards": [
+                        {
+                            "id": "conflict-card",
+                            "layout": "before-after",
+                            "title": "Overwrite check",
+                            "before": {"image": str(input_png)},
+                            "after": {"image": "sample.png"},
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        rc, payload = run_cli("render", str(spec), "--out-dir", str(out_dir))
+        self.assertEqual(rc, 1)
+        self.assertFalse(payload["ok"])
+        self.assertTrue(any("拒绝覆盖" in err for err in payload["errors"]), payload["errors"])
+        self.assertEqual(input_png.read_bytes(), original_bytes)
+
+    def test_invalid_before_after_orientation_and_width_percent_rejected(self) -> None:
+        spec = self.tmp_dir / "bad-ba-stacked.json"
+        spec.write_text(
+            json.dumps(
+                {
+                    "cards": [
+                        {
+                            "id": "bad-ba-orient",
+                            "layout": "before-after",
+                            "orientation": "diagonal",
+                            "title": "Invalid orient",
+                            "before": {"image": "sample.png"},
+                            "after": {"image": "sample.png", "widthPercent": 20},
+                        },
+                        {
+                            "id": "bad-ba-wp-high",
+                            "layout": "before-after",
+                            "orientation": "stacked",
+                            "title": "Invalid wp high",
+                            "before": {"image": "sample.png"},
+                            "after": {"image": "sample.png", "widthPercent": 120},
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        rc, payload = run_cli("render", str(spec), "--out-dir", str(self.tmp_dir / "out"))
+        self.assertEqual(rc, 1)
+        self.assertFalse(payload["ok"])
+        self.assertTrue(any("orientation" in e for e in payload["errors"]), payload["errors"])
+        wp_errors = [e for e in payload["errors"] if "widthPercent" in e]
+        self.assertEqual(len(wp_errors), 2, payload["errors"])
+
 
 class RenderCardsIntegrationTest(unittest.TestCase):
     @classmethod
@@ -932,6 +1079,161 @@ class RenderCardsIntegrationTest(unittest.TestCase):
         fp_w, fp_h = png_size(fp_png)
         self.assertEqual(fp_w, 1200)
         self.assertGreater(fp_h, 1500)
+
+    def test_before_after_cjk_and_english_default_labels(self) -> None:
+        zh_spec = self.tmp_dir / "zh-ba.spec.json"
+        zh_spec.write_text(
+            json.dumps(
+                {
+                    "cards": [
+                        {
+                            "id": "ba-zh-auto",
+                            "layout": "before-after",
+                            "ratio": "16:9",
+                            "title": "改版前后对比",
+                            "before": {"image": "assets/mod-1.png"},
+                            "after": {"image": "assets/mod-2.png"},
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        zh_out = self.tmp_dir / "out-zh-ba"
+        rc_zh, payload_zh = run_cli("render", str(zh_spec), "--out-dir", str(zh_out), "--scale", "1")
+        self.assertEqual(rc_zh, 0, payload_zh)
+        zh_html = (zh_out / "html" / "ba-zh-auto.html").read_text(encoding="utf-8")
+        self.assertIn('<html lang="zh-CN">', zh_html)
+        self.assertIn("<span>对比前</span>", zh_html)
+        self.assertIn("<span>对比后</span>", zh_html)
+        zh_sheet = (zh_out / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<html lang="zh-CN">', zh_sheet)
+        self.assertIn("展示卡片总览", zh_sheet)
+        self.assertIn("共 1 张卡片", zh_sheet)
+
+        en_spec = self.tmp_dir / "en-ba.spec.json"
+        en_spec.write_text(
+            json.dumps(
+                {
+                    "cards": [
+                        {
+                            "id": "ba-en-auto",
+                            "layout": "before-after",
+                            "ratio": "16:9",
+                            "title": "Before and after comparison",
+                            "before": {"image": "assets/mod-1.png"},
+                            "after": {"image": "assets/mod-2.png"},
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        en_out = self.tmp_dir / "out-en-ba"
+        rc_en, payload_en = run_cli("render", str(en_spec), "--out-dir", str(en_out), "--scale", "1")
+        self.assertEqual(rc_en, 0, payload_en)
+        en_html = (en_out / "html" / "ba-en-auto.html").read_text(encoding="utf-8")
+        self.assertIn('<html lang="en">', en_html)
+        self.assertIn("<span>BEFORE</span>", en_html)
+        self.assertIn("<span>AFTER</span>", en_html)
+        en_sheet = (en_out / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<html lang="en">', en_sheet)
+        self.assertIn("Showcase Contact Sheet", en_sheet)
+        self.assertIn("1 cards", en_sheet)
+
+    def test_before_after_stacked_landscape_and_contain_stage_padding(self) -> None:
+        spec_data = {
+            "theme": "dark-studio",
+            "brand": {"name": "Oil Studio", "tag": "timeline editor"},
+            "cards": [
+                {
+                    "id": "ba-stacked-16x9",
+                    "layout": "before-after",
+                    "orientation": "stacked",
+                    "ratio": "16:9",
+                    "accent": "#2fbf71",
+                    "title": "一键剪掉 8 处停顿气口",
+                    "subtitle": "原始 32 秒波形与自动粗剪后的 24.9 秒成片时间轴同轴对比。",
+                    "deltaBadge": "-7.1 s · 删去 8 处停顿",
+                    "before": {
+                        "label": "原片 · 0:32",
+                        "image": "assets/hero.png",
+                        "bg": "#15181d",
+                    },
+                    "after": {
+                        "label": "精剪后 · 0:24.9",
+                        "image": "assets/hero.png",
+                        "widthPercent": 75,
+                        "bg": "#15181d",
+                    },
+                },
+                {
+                    "id": "ws-contain-padded",
+                    "layout": "workflow-steps",
+                    "ratio": "16:9",
+                    "accent": "#38bdf8",
+                    "title": "三步端到端工作流",
+                    "steps": [
+                        {
+                            "title": "采集",
+                            "caption": "锁定窗口无边框抓图",
+                            "image": "assets/mod-1.png",
+                            "fit": "contain",
+                            "bg": "#15181d",
+                        },
+                        {
+                            "title": "编排",
+                            "caption": "自动均匀留白舞台",
+                            "image": "assets/mod-2.png",
+                            "fit": "contain",
+                            "bg": "#15181d",
+                        },
+                        {
+                            "title": "交付",
+                            "caption": "导出 @2x 高清展板",
+                            "image": "assets/mod-3.png",
+                            "fit": "contain",
+                            "bg": "#15181d",
+                        },
+                    ],
+                },
+                {
+                    "id": "mb-contain-padded",
+                    "layout": "module-bento",
+                    "ratio": "16:9",
+                    "accent": "#38bdf8",
+                    "title": "统一留白模块总览",
+                    "items": [
+                        {"image": "assets/mod-1.png", "label": "面板 A", "fit": "contain", "bg": "#15181d"},
+                        {"image": "assets/mod-2.png", "label": "面板 B", "fit": "contain", "bg": "#15181d"},
+                    ],
+                },
+            ],
+        }
+        spec_path = self.tmp_dir / "tension.spec.json"
+        spec_path.write_text(json.dumps(spec_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        out_dir = self.tmp_dir / "out-tension"
+        rc, payload = run_cli("render", str(spec_path), "--out-dir", str(out_dir), "--scale", "2")
+        self.assertEqual(rc, 0, payload)
+        self.assertEqual(payload["rendered"], 3)
+
+        for card in payload["cards"]:
+            self.assertEqual(card["warnings"], [], f"Unexpected warnings for {card['id']}: {card['warnings']}")
+            self.assertEqual(png_size(Path(card["png"])), (3200, 1800))
+
+        ba_html = (out_dir / "html" / "ba-stacked-16x9.html").read_text(encoding="utf-8")
+        self.assertIn("ba-orient-stacked", ba_html)
+        self.assertIn("ba-after-track", ba_html)
+        self.assertIn("width:75%;", ba_html)
+        self.assertIn("ba-ghost-zone", ba_html)
+        self.assertIn("-7.1 s · 删去 8 处停顿", ba_html)
+
+        ws_html = (out_dir / "html" / "ws-contain-padded.html").read_text(encoding="utf-8")
+        self.assertIn("ws-step-media is-contain", ws_html)
+
+        mb_html = (out_dir / "html" / "mb-contain-padded.html").read_text(encoding="utf-8")
+        self.assertIn("mb-card-media is-contain", mb_html)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render warm-paper editorial product showcase cards to crisp @2x PNGs.
+"""Render editorial product showcase cards (warm-paper, dark-studio, cool-gallery) to crisp @2x PNGs.
 
 Uses Python 3.10+ standard library only and drives local headless Chrome,
 Chromium, or Microsoft Edge directly via Chrome DevTools Protocol (CDP)
@@ -13,6 +13,7 @@ import base64
 import hashlib
 import html
 import json
+import math
 import os
 import platform
 import re
@@ -80,6 +81,8 @@ SUPPORTED_THEMES = (
 
 SUPPORTED_DISPLAY_STYLES = ("serif", "sans")
 SUPPORTED_WC_ARRANGEMENTS = ("split", "stacked")
+SUPPORTED_BA_ORIENTATIONS = ("side-by-side", "stacked")
+SUPPORTED_LANGS = ("zh", "en")
 
 THEME_DEFAULT_DISPLAY: dict[str, str] = {
     "warm-paper": "serif",
@@ -100,6 +103,8 @@ BG_COLOR_RE = re.compile(
     r"rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\))$",
     re.IGNORECASE,
 )
+_POS_TOKEN = r"(?:top|bottom|left|right|center|-?(?:\d+(?:\.\d+)?|\.\d+)(?:%|px)|0)"
+POSITION_RE = re.compile(rf"^{_POS_TOKEN}(?:\s+{_POS_TOKEN}){{0,3}}$", re.IGNORECASE)
 CUSTOM_SIZE_RE = re.compile(r"^(\d{3,4})[xX×](\d{3,4})$")
 CJK_RE = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
 VALID_FITS = ("cover", "contain")
@@ -107,6 +112,82 @@ VALID_FITS = ("cover", "contain")
 
 def has_cjk(text: str) -> bool:
     return bool(CJK_RE.search(text or ""))
+
+
+def is_cjk_card(card: dict[str, Any]) -> bool:
+    """Detect whether a card uses CJK copy, honoring explicit lang when present."""
+    explicit = str(card.get("lang") or "").strip().lower()
+    if explicit == "zh":
+        return True
+    if explicit == "en":
+        return False
+
+    samples: list[str] = []
+    for key in ("title", "subtitle", "eyebrow", "footer", "compareNote"):
+        val = card.get(key)
+        if isinstance(val, str) and val:
+            samples.append(val)
+
+    brand = card.get("brand")
+    if isinstance(brand, dict):
+        for key in ("name", "tag"):
+            val = brand.get(key)
+            if isinstance(val, str) and val:
+                samples.append(val)
+
+    for list_key in ("layers", "items", "pages", "sections", "callouts", "steps"):
+        seq = card.get(list_key)
+        if isinstance(seq, list):
+            for entry in seq:
+                if isinstance(entry, dict):
+                    for sub_key in ("label", "title", "caption", "summary", "tag"):
+                        val = entry.get(sub_key)
+                        if isinstance(val, str) and val:
+                            samples.append(val)
+
+    for side_key in ("before", "after", "window"):
+        side = card.get(side_key)
+        if isinstance(side, dict):
+            for sub_key in ("label", "caption"):
+                val = side.get(sub_key)
+                if isinstance(val, str) and val:
+                    samples.append(val)
+
+    return any(has_cjk(s) for s in samples)
+
+
+def validate_scale(scale: float) -> str | None:
+    if not isinstance(scale, (int, float)) or not math.isfinite(scale) or scale <= 0 or scale > 4:
+        return f"--scale 必须在 (0, 4] 范围内，收到 {scale}。"
+    return None
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=f".{os.getpid()}.tmp",
+        dir=str(path.parent),
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        try:
+            os.chmod(tmp_path, 0o644)
+        except OSError:
+            pass
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    atomic_write_bytes(path, text.encode("utf-8"))
 
 
 def contrast_ink_for_hex(hex_color: str) -> str:
@@ -390,7 +471,6 @@ class ChromeSession:
             "--hide-scrollbars",
             "--mute-audio",
             "--disable-extensions",
-            "--allow-file-access-from-files",
             "--disable-background-networking",
             "--disable-sync",
             "about:blank",
@@ -683,10 +763,7 @@ class ChromeSession:
 
             shot = self.send("Page.captureScreenshot", shot_params, session_id=session_id)
             png_bytes = base64.b64decode(shot["data"])
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path = out_path.with_suffix(".png.tmp")
-            tmp_path.write_bytes(png_bytes)
-            tmp_path.replace(out_path)
+            atomic_write_bytes(out_path, png_bytes)
             px_w, px_h = read_png_dimensions(out_path)
             return {
                 "width": px_w,
@@ -757,7 +834,13 @@ def esc_multiline(text: str) -> str:
     return "<br>".join(esc(line) for line in str(text).split("\n"))
 
 
-def resolve_asset_path(raw_path: str, base_dir: Path, field_label: str, errors: list[str]) -> str:
+def resolve_asset_path(
+    raw_path: str,
+    base_dir: Path,
+    field_label: str,
+    errors: list[str],
+    local_paths: set[Path] | None = None,
+) -> str:
     if not isinstance(raw_path, str) or not raw_path.strip():
         errors.append(f"{field_label} 必须是非空图片路径。")
         return ""
@@ -772,6 +855,8 @@ def resolve_asset_path(raw_path: str, base_dir: Path, field_label: str, errors: 
     if not candidate.is_file():
         errors.append(f"{field_label} 指向的文件不存在：{raw_path}（解析为 {candidate}）")
         return ""
+    if local_paths is not None:
+        local_paths.add(candidate)
     return candidate.as_uri()
 
 
@@ -797,6 +882,11 @@ def normalize_image_options(
         fit = default_fit
     position = str(raw.get("position") or default_position).strip()
     if not position:
+        position = default_position
+    elif not POSITION_RE.fullmatch(position):
+        errors.append(
+            f"{field_label}.position 无效（{position!r}）；仅允许 CSS object-position 关键字（top/bottom/left/right/center）、百分比或 px 数值。"
+        )
         position = default_position
     bg = str(raw.get("bg") if raw.get("bg") is not None else default_bg).strip()
     if bg and not BG_COLOR_RE.fullmatch(bg):
@@ -852,6 +942,16 @@ def validate_spec(
             )
             default_display = None
 
+    default_lang_raw = data.get("lang")
+    default_lang: str | None = None
+    if default_lang_raw is not None:
+        default_lang = str(default_lang_raw).strip().lower()
+        if default_lang not in SUPPORTED_LANGS:
+            errors.append(
+                f"顶层 lang 无效（{default_lang!r}）；可选值：{', '.join(SUPPORTED_LANGS)}。"
+            )
+            default_lang = None
+
     seen_ids: set[str] = set()
     normalized: list[dict[str, Any]] = []
 
@@ -872,6 +972,7 @@ def validate_spec(
             continue
         seen_ids.add(card_id)
         label = f"card '{card_id}'"
+        card_local_paths: set[Path] = set()
 
         layout = raw.get("layout")
         if layout not in SUPPORTED_LAYOUTS:
@@ -906,6 +1007,16 @@ def validate_spec(
         else:
             display_style = THEME_DEFAULT_DISPLAY[theme]
 
+        explicit_lang: str | None = default_lang
+        if raw.get("lang") is not None:
+            card_lang_raw = str(raw.get("lang")).strip().lower()
+            if card_lang_raw not in SUPPORTED_LANGS:
+                errors.append(
+                    f"{label}.lang 无效（{card_lang_raw!r}）；可选值：{', '.join(SUPPORTED_LANGS)}。"
+                )
+                continue
+            explicit_lang = card_lang_raw
+
         accent = str(raw.get("accent") or THEME_DEFAULT_ACCENT[theme]).strip()
         if not HEX_COLOR_RE.fullmatch(accent):
             errors.append(
@@ -925,7 +1036,11 @@ def validate_spec(
                 icon_uri = ""
                 if brand_raw.get("icon"):
                     icon_uri = resolve_asset_path(
-                        brand_raw["icon"], base_dir, f"{label}.brand.icon", errors
+                        brand_raw["icon"],
+                        base_dir,
+                        f"{label}.brand.icon",
+                        errors,
+                        local_paths=card_local_paths,
                     )
                 brand_obj = {
                     "name": str(brand_raw.get("name", "")).strip(),
@@ -944,11 +1059,20 @@ def validate_spec(
         if not title and not (layout == "gallery-wall" and variant == "collage"):
             errors.append(f"{label}.title 不能为空（仅 gallery-wall collage 变体可省略标题）。")
 
+        lang_probe = dict(raw)
+        lang_probe["brand"] = brand_obj
+        if explicit_lang is not None:
+            lang_probe["lang"] = explicit_lang
+        else:
+            lang_probe.pop("lang", None)
+        card_is_cjk = is_cjk_card(lang_probe)
+
         card: dict[str, Any] = {
             "id": card_id,
             "layout": layout,
             "theme": theme,
             "displayStyle": display_style,
+            "lang": "zh" if card_is_cjk else "en",
             "ratio": ratio_str,
             "width": width,
             "height": height,
@@ -982,6 +1106,7 @@ def validate_spec(
                         base_dir,
                         f"{label}.layers[{li}].image",
                         errors,
+                        local_paths=card_local_paths,
                     )
                     is_transparent = bool(layer.get("transparent", False))
                     fit, position, bg = normalize_image_options(
@@ -991,10 +1116,11 @@ def validate_spec(
                         default_fit="cover",
                         default_position="center bottom" if is_transparent else "top center",
                     )
+                    default_layer_label = f"图层 {li + 1}" if card_is_cjk else f"Layer {li + 1}"
                     layers.append(
                         {
                             "index": f"{li + 1:02d}",
-                            "label": str(layer.get("label", f"Layer {li + 1}")).strip(),
+                            "label": str(layer.get("label") or default_layer_label).strip(),
                             "image": uri,
                             "transparent": is_transparent,
                             "fit": fit,
@@ -1013,7 +1139,11 @@ def validate_spec(
                 errors.append(f"{label}.hero 必须是包含 image 的对象。")
             else:
                 uri = resolve_asset_path(
-                    raw_hero.get("image", ""), base_dir, f"{label}.hero.image", errors
+                    raw_hero.get("image", ""),
+                    base_dir,
+                    f"{label}.hero.image",
+                    errors,
+                    local_paths=card_local_paths,
                 )
                 fit, position, bg = normalize_image_options(
                     raw_hero,
@@ -1051,6 +1181,7 @@ def validate_spec(
                         base_dir,
                         f"{label}.items[{ii}].image",
                         errors,
+                        local_paths=card_local_paths,
                     )
                     fit, position, bg = normalize_image_options(
                         item,
@@ -1087,7 +1218,13 @@ def validate_spec(
             card["variant"] = variant
             fg = raw.get("foreground")
             card["foreground"] = (
-                resolve_asset_path(fg, base_dir, f"{label}.foreground", errors)
+                resolve_asset_path(
+                    fg,
+                    base_dir,
+                    f"{label}.foreground",
+                    errors,
+                    local_paths=card_local_paths,
+                )
                 if fg
                 else ""
             )
@@ -1128,6 +1265,7 @@ def validate_spec(
                                         base_dir,
                                         f"{label}.sections[{si}].images[{sub_i}].image",
                                         errors,
+                                        local_paths=card_local_paths,
                                     )
                                     p_fit, p_pos, p_bg = normalize_image_options(
                                         sub_img,
@@ -1146,6 +1284,7 @@ def validate_spec(
                                         base_dir,
                                         f"{label}.sections[{si}].images[{sub_i}]",
                                         errors,
+                                        local_paths=card_local_paths,
                                     )
                                     plates.append(
                                         {"image": sub_uri, "fit": sec_fit, "position": sec_pos, "bg": sec_bg}
@@ -1156,6 +1295,7 @@ def validate_spec(
                             base_dir,
                             f"{label}.sections[{si}].image",
                             errors,
+                            local_paths=card_local_paths,
                         )
                         plates.append(
                             {"image": sub_uri, "fit": sec_fit, "position": sec_pos, "bg": sec_bg}
@@ -1192,6 +1332,7 @@ def validate_spec(
                     base_dir,
                     f"{label}.showcase.image",
                     errors,
+                    local_paths=card_local_paths,
                 )
                 fit, position, bg = normalize_image_options(
                     raw_showcase,
@@ -1226,6 +1367,7 @@ def validate_spec(
                     base_dir,
                     f"{label}.window.image",
                     errors,
+                    local_paths=card_local_paths,
                 )
                 fit, position, bg = normalize_image_options(
                     raw_window,
@@ -1257,6 +1399,7 @@ def validate_spec(
                         base_dir,
                         f"{label}.callouts[{ci}].image",
                         errors,
+                        local_paths=card_local_paths,
                     )
                     fit, position, bg = normalize_image_options(
                         co,
@@ -1304,7 +1447,25 @@ def validate_spec(
                 card["callouts"] = callouts
 
         if layout == "before-after":
-            for side_key, default_lbl in (("before", "BEFORE"), ("after", "AFTER")):
+            raw_ba_orient = raw.get("orientation")
+            if raw_ba_orient is not None:
+                ba_orient = str(raw_ba_orient).strip().lower()
+                if ba_orient not in SUPPORTED_BA_ORIENTATIONS:
+                    errors.append(
+                        f"{label}.orientation 无效（{ba_orient!r}）；可选值：{', '.join(SUPPORTED_BA_ORIENTATIONS)}。"
+                    )
+                    ba_orient = "stacked" if card["orientation"] == "portrait" else "side-by-side"
+            else:
+                ba_orient = "stacked" if card["orientation"] == "portrait" else "side-by-side"
+            card["compareOrientation"] = ba_orient
+            card["deltaBadge"] = str(raw.get("deltaBadge", "")).strip()
+
+            ba_defaults = (
+                (("before", "对比前"), ("after", "对比后"))
+                if card_is_cjk
+                else (("before", "BEFORE"), ("after", "AFTER"))
+            )
+            for side_key, default_lbl in ba_defaults:
                 raw_side = raw.get(side_key)
                 if not isinstance(raw_side, dict):
                     errors.append(f"{label}.{side_key} 必须是包含 image 的对象。")
@@ -1314,6 +1475,7 @@ def validate_spec(
                         base_dir,
                         f"{label}.{side_key}.image",
                         errors,
+                        local_paths=card_local_paths,
                     )
                     fit, position, bg = normalize_image_options(
                         raw_side,
@@ -1322,6 +1484,20 @@ def validate_spec(
                         default_fit="cover",
                         default_position="center",
                     )
+                    width_pct: float | None = None
+                    if raw_side.get("widthPercent") is not None:
+                        raw_wp = raw_side.get("widthPercent")
+                        if (
+                            isinstance(raw_wp, bool)
+                            or not isinstance(raw_wp, (int, float))
+                            or not math.isfinite(raw_wp)
+                            or not (35 <= float(raw_wp) <= 100)
+                        ):
+                            errors.append(
+                                f"{label}.{side_key}.widthPercent 必须在 35 到 100 之间，收到 {raw_wp!r}。"
+                            )
+                        else:
+                            width_pct = float(raw_wp)
                     card[side_key] = {
                         "label": str(raw_side.get("label") or default_lbl).strip(),
                         "image": uri,
@@ -1329,6 +1505,7 @@ def validate_spec(
                         "fit": fit,
                         "position": position,
                         "bg": bg,
+                        "widthPercent": width_pct,
                     }
             card["compareNote"] = str(raw.get("compareNote", "")).strip()
 
@@ -1347,6 +1524,7 @@ def validate_spec(
                         base_dir,
                         f"{label}.steps[{si}].image",
                         errors,
+                        local_paths=card_local_paths,
                     )
                     fit, position, bg = normalize_image_options(
                         st,
@@ -1371,6 +1549,7 @@ def validate_spec(
                     )
                 card["steps"] = steps
 
+        card["_inputPaths"] = sorted(str(p) for p in card_local_paths)
         normalized.append(card)
 
     return normalized, errors
@@ -3009,6 +3188,97 @@ html, body {
   z-index: 6;
 }
 
+.ba-bridge.has-delta {
+  width: auto;
+  height: 44px;
+  padding: 0 16px;
+  gap: 8px;
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--bridge-border));
+}
+
+.ba-divider-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex: none;
+  margin: -2px 0;
+}
+
+.ba-divider-row::before,
+.ba-divider-row::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.ba-bridge.is-inline {
+  position: static;
+  transform: none;
+  width: 38px;
+  height: 38px;
+  flex: none;
+}
+
+.ba-bridge.is-inline.has-delta {
+  width: auto;
+  height: 38px;
+  padding: 0 16px;
+  gap: 8px;
+}
+
+.ba-delta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.ba-after-track {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+}
+
+.ba-after-track .ba-frame {
+  flex: none;
+}
+
+.ba-ghost-zone {
+  flex: 1;
+  min-width: 0;
+  border-radius: 16px;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 46%, var(--hairline));
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--accent) 6%, transparent) 0 10px,
+    transparent 10px 20px
+  );
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 20px;
+  text-align: center;
+}
+
+.ba-ghost-zone .ba-delta-badge {
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--bridge-bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--bridge-border));
+  box-shadow: var(--shadow-plate);
+  font-size: 15px;
+}
+
 .ba-bottom-bar {
   display: flex;
   align-items: center;
@@ -3023,6 +3293,18 @@ html, body {
   color: var(--caption-ink);
 }
 
+.layout-before-after.ba-orient-stacked .ba-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.layout-before-after.ba-orient-stacked .ba-pane {
+  flex: 1 1 0;
+  min-height: 0;
+  gap: 9px;
+}
+
 .layout-before-after.orient-portrait {
   padding: 40px 44px 36px;
   gap: 20px;
@@ -3034,10 +3316,46 @@ html, body {
   gap: 8px;
 }
 
-.layout-before-after.orient-portrait .ba-stage {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 28px;
+.layout-before-after.orient-portrait.ba-orient-stacked .ba-stage {
+  gap: 18px;
+}
+
+/* Uniform padded stage when fit: "contain" is used on media slots */
+.ws-step-media.is-contain,
+.mb-card-media.is-contain,
+.ba-frame.is-contain,
+.lb-tile.is-contain,
+.wc-callout-media.is-contain {
+  padding: 18px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ws-step-media.is-contain img,
+.mb-card-media.is-contain img,
+.ba-frame.is-contain img,
+.lb-tile.is-contain img,
+.wc-callout-media.is-contain img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 10px;
+  box-shadow:
+    0 12px 26px -10px rgba(0, 0, 0, 0.24),
+    0 2px 6px rgba(0, 0, 0, 0.10);
+}
+
+.theme-dark-studio .ws-step-media.is-contain img,
+.theme-dark-studio .mb-card-media.is-contain img,
+.theme-dark-studio .ba-frame.is-contain img,
+.theme-dark-studio .lb-tile.is-contain img,
+.theme-dark-studio .wc-callout-media.is-contain img {
+  box-shadow:
+    0 14px 30px -10px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 /* ---------- 8. workflow-steps ---------- */
@@ -3711,11 +4029,12 @@ def build_layered_bento_body(card: dict[str, Any]) -> str:
     tiles: list[str] = []
     for idx, item in enumerate(items):
         span_cls = " span-2" if odd_span and idx == 0 else ""
+        contain_cls = " is-contain" if item["fit"] == "contain" else ""
         fit_style = build_img_style(item["fit"], item["position"])
         tile_bg = build_bg_style(item.get("bg", ""))
         tile_style_attr = f' style="{tile_bg}"' if tile_bg else ""
         tiles.append(
-            f'<div class="lb-tile{span_cls}"{tile_style_attr}>'
+            f'<div class="lb-tile{span_cls}{contain_cls}"{tile_style_attr}>'
             f'<img src="{esc(item["image"])}" alt="{esc(item["label"])}" style="{fit_style}">'
             f"</div>"
         )
@@ -3860,6 +4179,7 @@ def build_module_bento_body(card: dict[str, Any]) -> str:
 
     cards_html: list[str] = []
     for item in items:
+        contain_cls = " is-contain" if item["fit"] == "contain" else ""
         fit_style = build_img_style(item["fit"], item["position"])
         media_bg = build_bg_style(item.get("bg", ""))
         media_style_attr = f' style="{media_bg}"' if media_bg else ""
@@ -3875,7 +4195,7 @@ def build_module_bento_body(card: dict[str, Any]) -> str:
         )
         cards_html.append(
             f'<div class="mb-card">'
-            f'<div class="mb-card-media"{media_style_attr}>'
+            f'<div class="mb-card-media{contain_cls}"{media_style_attr}>'
             f'<img src="{esc(item["image"])}" alt="{esc(item["label"])}" style="{fit_style}"></div>'
             f"{label_html}</div>"
         )
@@ -4088,9 +4408,10 @@ def build_window_callout_body(card: dict[str, Any]) -> str:
                 f"{caption_html}</div>"
             )
 
+        contain_cls = " is-contain" if co["fit"] == "contain" else ""
         callout_cards.append(
             f'<div class="wc-callout-card" data-target-x="{co["targetX"]}" data-target-y="{co["targetY"]}"{size_attrs}>'
-            f'<div class="wc-callout-media"{media_style_attr}>'
+            f'<div class="wc-callout-media{contain_cls}"{media_style_attr}>'
             f'<img src="{esc(co["image"])}" alt="{esc(co["title"])}" style="{img_style}"></div>'
             f"{meta_html}</div>"
         )
@@ -4150,12 +4471,14 @@ def build_window_callout_body(card: dict[str, Any]) -> str:
 def build_before_after_body(card: dict[str, Any]) -> str:
     before = card["before"]
     after = card["after"]
-    is_portrait = card["orientation"] == "portrait"
+    is_stacked = card.get("compareOrientation") == "stacked"
+    delta_badge = card.get("deltaBadge", "")
+    after_wp = after.get("widthPercent")
+    use_ghost_track = is_stacked and after_wp is not None and after_wp < 100
     brand_html = render_brand_html(card["brand"])
 
     def render_pane(side: dict[str, Any], is_after: bool) -> str:
-        frame_bg = build_bg_style(side.get("bg", ""))
-        frame_attr = f' style="{frame_bg}"' if frame_bg else ""
+        contain_cls = " is-contain" if side["fit"] == "contain" else ""
         img_style = build_img_style(side["fit"], side["position"])
         dot_html = '<span class="sc-dot"></span>' if is_after else ""
         caption_html = (
@@ -4164,15 +4487,38 @@ def build_before_after_body(card: dict[str, Any]) -> str:
             else ""
         )
         cls = "ba-pane is-after" if is_after else "ba-pane is-before"
+        if is_after and use_ghost_track:
+            frame_style = build_bg_style(
+                side.get("bg", ""), extra=f"width:{after_wp:g}%;"
+            )
+            frame_attr = f' style="{frame_style}"' if frame_style else ""
+            ghost_inner = (
+                f'<span class="ba-delta-badge">{esc(delta_badge)}</span>'
+                if delta_badge
+                else ""
+            )
+            media_block = (
+                f'<div class="ba-after-track">'
+                f'<div class="ba-frame{contain_cls}"{frame_attr}>'
+                f'<img src="{esc(side["image"])}" alt="{esc(side["label"])}" style="{img_style}"></div>'
+                f'<div class="ba-ghost-zone">{ghost_inner}</div>'
+                f"</div>"
+            )
+        else:
+            frame_bg = build_bg_style(side.get("bg", ""))
+            frame_attr = f' style="{frame_bg}"' if frame_bg else ""
+            media_block = (
+                f'<div class="ba-frame{contain_cls}"{frame_attr}>'
+                f'<img src="{esc(side["image"])}" alt="{esc(side["label"])}" style="{img_style}"></div>'
+            )
         return (
             f'<div class="{cls}">'
             f'<div class="ba-label-row"><span class="ba-pill">{dot_html}<span>{esc(side["label"])}</span></span></div>'
-            f'<div class="ba-frame"{frame_attr}>'
-            f'<img src="{esc(side["image"])}" alt="{esc(side["label"])}" style="{img_style}"></div>'
+            f"{media_block}"
             f"{caption_html}</div>"
         )
 
-    if is_portrait:
+    if is_stacked:
         bridge_svg = (
             '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">'
             '<path d="M10 4V15.5M10 15.5L5.5 11M10 15.5L14.5 11" '
@@ -4197,6 +4543,34 @@ def build_before_after_body(card: dict[str, Any]) -> str:
         else ""
     )
 
+    if is_stacked:
+        show_inline_delta = bool(delta_badge) and not use_ghost_track
+        bridge_cls = "ba-bridge is-inline has-delta" if show_inline_delta else "ba-bridge is-inline"
+        delta_html = (
+            f'<span class="ba-delta-badge">{esc(delta_badge)}</span>'
+            if show_inline_delta
+            else ""
+        )
+        stage_inner = (
+            f"{render_pane(before, False)}"
+            f'<div class="ba-divider-row">'
+            f'<div class="{bridge_cls}" aria-hidden="true">{bridge_svg}{delta_html}</div>'
+            f"</div>"
+            f"{render_pane(after, True)}"
+        )
+    else:
+        bridge_cls = "ba-bridge has-delta" if delta_badge else "ba-bridge"
+        delta_html = (
+            f'<span class="ba-delta-badge">{esc(delta_badge)}</span>'
+            if delta_badge
+            else ""
+        )
+        stage_inner = (
+            f"{render_pane(before, False)}"
+            f"{render_pane(after, True)}"
+            f'<div class="{bridge_cls}" aria-hidden="true">{bridge_svg}{delta_html}</div>'
+        )
+
     return f"""
     <div class="ba-header">
       {brand_html}
@@ -4206,9 +4580,7 @@ def build_before_after_body(card: dict[str, Any]) -> str:
       </div>
     </div>
     <div class="ba-stage">
-      {render_pane(before, False)}
-      {render_pane(after, True)}
-      <div class="ba-bridge" aria-hidden="true">{bridge_svg}</div>
+      {stage_inner}
     </div>
     {bottom_bar}
     """
@@ -4247,9 +4619,10 @@ def build_workflow_steps_body(card: dict[str, Any]) -> str:
             if step.get("caption")
             else ""
         )
+        contain_cls = " is-contain" if step["fit"] == "contain" else ""
         parts.append(
             f'<div class="ws-step-card">'
-            f'<div class="ws-step-media"{media_attr}>'
+            f'<div class="ws-step-media{contain_cls}"{media_attr}>'
             f'<img src="{esc(step["image"])}" alt="{esc(step["title"])}" style="{img_style}"></div>'
             f'<div class="ws-step-body">'
             f'<div class="ws-step-head"><span class="sc-idx">{esc(step["index"])}</span>'
@@ -4298,6 +4671,9 @@ def build_card_html(card: dict[str, Any], fonts_css_href: str) -> str:
     arrange_cls = (
         f" arrange-{card['arrangement']}" if layout == "window-callout" else ""
     )
+    ba_orient_cls = (
+        f" ba-orient-{card['compareOrientation']}" if layout == "before-after" else ""
+    )
     theme_cls = f"theme-{card['theme']}"
     display_cls = f"display-{card['displayStyle']}"
     tall_cls = " is-tall" if card.get("isTall") else ""
@@ -4305,8 +4681,10 @@ def build_card_html(card: dict[str, Any], fonts_css_href: str) -> str:
         CONNECTOR_SCRIPT if layout in ("section-assembly", "window-callout") else ""
     )
 
+    html_lang = "zh-CN" if is_cjk_card(card) else "en"
+
     return f"""<!doctype html>
-<html lang="zh-CN">
+<html lang="{html_lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4316,7 +4694,7 @@ def build_card_html(card: dict[str, Any], fonts_css_href: str) -> str:
 </head>
 <body class="{esc(theme_cls)}">
   <main
-    class="sc-canvas {esc(theme_cls)} {esc(display_cls)} layout-{esc(layout)} orient-{esc(card["orientation"])}{tall_cls}{variant_cls}{arrange_cls}"
+    class="sc-canvas {esc(theme_cls)} {esc(display_cls)} layout-{esc(layout)} orient-{esc(card["orientation"])}{tall_cls}{variant_cls}{arrange_cls}{ba_orient_cls}"
     style="--canvas-w:{card["width"]}px;--canvas-h:{card["height"]}px;--accent:{esc(card["accent"])};--accent-ink:{esc(card["accentInk"])};"
   >
     {body_inner}
@@ -4327,7 +4705,12 @@ def build_card_html(card: dict[str, Any], fonts_css_href: str) -> str:
 """
 
 
-def build_contact_sheet_html(results: list[dict[str, Any]], spec_name: str) -> str:
+def build_contact_sheet_html(
+    results: list[dict[str, Any]],
+    spec_name: str,
+    *,
+    is_cjk: bool = False,
+) -> str:
     themes = [item.get("theme", "warm-paper") for item in results]
     sheet_theme = "warm-paper"
     if themes:
@@ -4413,12 +4796,23 @@ def build_contact_sheet_html(results: list[dict[str, Any]], spec_name: str) -> s
             """
         )
 
+    html_lang = "zh-CN" if is_cjk else "en"
+    page_title = (
+        f"展示卡片总览 · {esc(spec_name)}" if is_cjk else f"Showcase Cards · {esc(spec_name)}"
+    )
+    heading_text = "展示卡片总览" if is_cjk else "Showcase Contact Sheet"
+    count_text = (
+        f"{esc(spec_name)} · 共 {len(results)} 张卡片"
+        if is_cjk
+        else f"{esc(spec_name)} · {len(results)} cards"
+    )
+
     return f"""<!doctype html>
-<html lang="zh-CN">
+<html lang="{html_lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Showcase Cards · {esc(spec_name)}</title>
+  <title>{page_title}</title>
   <link rel="stylesheet" href="html/fonts.css">
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
@@ -4516,8 +4910,8 @@ def build_contact_sheet_html(results: list[dict[str, Any]], spec_name: str) -> s
 </head>
 <body>
   <header>
-    <h1>Showcase Contact Sheet</h1>
-    <div class="cs-sub">{esc(spec_name)} · {len(results)} cards</div>
+    <h1>{heading_text}</h1>
+    <div class="cs-sub">{count_text}</div>
   </header>
   <section class="cs-grid">
     {"".join(cards_markup)}
@@ -4582,10 +4976,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def cmd_render(args: argparse.Namespace) -> int:
-    if args.scale <= 0 or args.scale > 4:
+    scale_err = validate_scale(args.scale)
+    if scale_err:
         print(
             json.dumps(
-                {"ok": False, "errors": [f"--scale 必须在 (0, 4] 范围内，收到 {args.scale}。"]},
+                {"ok": False, "errors": [scale_err]},
                 ensure_ascii=False,
                 indent=2,
             )
@@ -4625,6 +5020,37 @@ def cmd_render(args: argparse.Namespace) -> int:
     else:
         cards = all_cards
 
+    out_dir = Path(args.out_dir).expanduser().resolve()
+    html_dir = out_dir / "html"
+    png_dir = out_dir / "png"
+    fonts_css_path = (html_dir / "fonts.css").resolve()
+    contact_sheet = (out_dir / "index.html").resolve()
+
+    input_paths: set[Path] = set()
+    for c in all_cards:
+        for p_str in c.get("_inputPaths", []):
+            input_paths.add(Path(p_str).resolve())
+
+    overwrite_errors: list[str] = []
+    planned_outputs: list[Path] = [fonts_css_path, contact_sheet]
+    for card in cards:
+        planned_outputs.append((html_dir / f"{card['id']}.html").resolve())
+        planned_outputs.append((png_dir / f"{card['id']}.png").resolve())
+    for out_file in planned_outputs:
+        if out_file in input_paths:
+            overwrite_errors.append(
+                f"输出路径与输入素材冲突，已拒绝覆盖原图：{out_file}"
+            )
+    if overwrite_errors:
+        print(
+            json.dumps(
+                {"ok": False, "spec": str(spec_path), "errors": overwrite_errors},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
+
     chrome_path = find_chrome()
     if not chrome_path:
         print(
@@ -4641,14 +5067,10 @@ def cmd_render(args: argparse.Namespace) -> int:
         )
         return 1
 
-    out_dir = Path(args.out_dir).expanduser().resolve()
-    html_dir = out_dir / "html"
-    png_dir = out_dir / "png"
     html_dir.mkdir(parents=True, exist_ok=True)
     png_dir.mkdir(parents=True, exist_ok=True)
 
-    fonts_css_path = html_dir / "fonts.css"
-    fonts_css_path.write_text(build_inlined_fonts_css(), encoding="utf-8")
+    atomic_write_text(fonts_css_path, build_inlined_fonts_css())
 
     results: list[dict[str, Any]] = []
     try:
@@ -4656,9 +5078,7 @@ def cmd_render(args: argparse.Namespace) -> int:
             for card in cards:
                 card_html_path = html_dir / f"{card['id']}.html"
                 card_png_path = png_dir / f"{card['id']}.png"
-                card_html_path.write_text(
-                    build_card_html(card, "fonts.css"), encoding="utf-8"
-                )
+                atomic_write_text(card_html_path, build_card_html(card, "fonts.css"))
                 capture_info = browser.capture_page(
                     url=card_html_path.as_uri(),
                     out_path=card_png_path,
@@ -4674,6 +5094,7 @@ def cmd_render(args: argparse.Namespace) -> int:
                         "layout": card["layout"],
                         "theme": card["theme"],
                         "displayStyle": card["displayStyle"],
+                        "lang": card["lang"],
                         "ratio": card["ratio"],
                         "cssWidth": card["width"],
                         "cssHeight": card["height"],
@@ -4715,6 +5136,7 @@ def cmd_render(args: argparse.Namespace) -> int:
                     "layout": card["layout"],
                     "theme": card["theme"],
                     "displayStyle": card["displayStyle"],
+                    "lang": card["lang"],
                     "ratio": card["ratio"],
                     "cssWidth": card["width"],
                     "cssHeight": card["height"],
@@ -4727,9 +5149,11 @@ def cmd_render(args: argparse.Namespace) -> int:
                 }
             )
 
-    contact_sheet = out_dir / "index.html"
-    contact_sheet.write_text(
-        build_contact_sheet_html(sheet_entries, spec_path.name), encoding="utf-8"
+    cjk_count = sum(1 for item in sheet_entries if item.get("lang") == "zh")
+    sheet_is_cjk = bool(sheet_entries) and (cjk_count * 2 >= len(sheet_entries))
+    atomic_write_text(
+        contact_sheet,
+        build_contact_sheet_html(sheet_entries, spec_path.name, is_cjk=sheet_is_cjk),
     )
     summary = {
         "ok": True,
@@ -4746,6 +5170,11 @@ def cmd_render(args: argparse.Namespace) -> int:
 
 
 def cmd_shoot(args: argparse.Namespace) -> int:
+    scale_err = validate_scale(args.scale)
+    if scale_err:
+        print(json.dumps({"ok": False, "errors": [scale_err]}, ensure_ascii=False, indent=2))
+        return 1
+
     html_path = Path(args.html_file).expanduser().resolve()
     if not html_path.is_file():
         print(
@@ -4760,6 +5189,17 @@ def cmd_shoot(args: argparse.Namespace) -> int:
         width, height = parse_ratio(args.ratio)
     except ValueError as exc:
         print(json.dumps({"ok": False, "errors": [str(exc)]}, ensure_ascii=False, indent=2))
+        return 1
+
+    out_path = Path(args.out).expanduser().resolve()
+    if out_path == html_path:
+        print(
+            json.dumps(
+                {"ok": False, "errors": [f"输出路径与输入文件冲突，已拒绝覆盖：{out_path}"]},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 1
 
     chrome_path = find_chrome()
@@ -4778,7 +5218,6 @@ def cmd_shoot(args: argparse.Namespace) -> int:
         )
         return 1
 
-    out_path = Path(args.out).expanduser().resolve()
     try:
         with ChromeSession(chrome_path) as browser:
             info = browser.capture_page(
@@ -4817,7 +5256,22 @@ def cmd_shoot(args: argparse.Namespace) -> int:
 
 
 def cmd_capture(args: argparse.Namespace) -> int:
+    validation_errors: list[str] = []
+    scale_err = validate_scale(args.scale)
+    if scale_err:
+        validation_errors.append(scale_err)
+    if not isinstance(args.wait_ms, int) or not (0 <= args.wait_ms <= 15000):
+        validation_errors.append(
+            f"--wait-ms 必须在 [0, 15000] 毫秒范围内，收到 {args.wait_ms}。"
+        )
+    if validation_errors:
+        print(
+            json.dumps({"ok": False, "errors": validation_errors}, ensure_ascii=False, indent=2)
+        )
+        return 1
+
     target = args.target.strip()
+    local_path: Path | None = None
     if target.startswith(("http://", "https://", "file://")):
         url = target
     else:
@@ -4839,6 +5293,17 @@ def cmd_capture(args: argparse.Namespace) -> int:
         print(json.dumps({"ok": False, "errors": [str(exc)]}, ensure_ascii=False, indent=2))
         return 1
 
+    out_path = Path(args.out).expanduser().resolve()
+    if local_path is not None and out_path == local_path:
+        print(
+            json.dumps(
+                {"ok": False, "errors": [f"输出路径与输入文件冲突，已拒绝覆盖：{out_path}"]},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
+
     chrome_path = find_chrome()
     if not chrome_path:
         print(
@@ -4855,7 +5320,6 @@ def cmd_capture(args: argparse.Namespace) -> int:
         )
         return 1
 
-    out_path = Path(args.out).expanduser().resolve()
     try:
         with ChromeSession(chrome_path) as browser:
             info = browser.capture_page(
@@ -4895,7 +5359,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Render warm-paper editorial showcase cards to @2x PNGs."
+        description="Render editorial product showcase cards (warm-paper, dark-studio, cool-gallery) to @2x PNGs."
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

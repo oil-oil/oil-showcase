@@ -21,7 +21,7 @@ jobs:
           python-version: "3.12"
 
       - name: Check environment with doctor
-        run: python3 scripts/render_cards.py doctor
+        run: python3 skills/oil-showcase/scripts/render_cards.py doctor
 
       - name: Run unit and integration tests
-        run: python3 -W error -m unittest discover -s tests -v
+        run: python3 -W error -m unittest discover -s skills/oil-showcase/tests -v

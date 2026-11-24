@@ -21,7 +21,7 @@
 | `--paper-base` | `#f6f3ec` | `#101114` | `#f2f4f7` |
 | `--paper-bg` | `#fbf9f4 -> #f6f3ec -> #efeae0` 径向柔光 | `#1a1c22 -> #101114 -> #0d0e11` 哑光暗棚 | `#fafbfd -> #f2f4f7 -> #e9edf2` 净灰柔光 |
 | `--ink` | `#1b1c19` | `#f3f4f6` | `#14171d` |
-| `--muted` | `#5d6058` | `#989da8` | `#5d6470` |
+| `--muted` | `#4a4d46` | `#b0b6c2` | `#4b525e` |
 | `--frame-bg` | `#ffffff` | `#17191e`（消除深色截图白边） | `#ffffff` |
 | `--surface-bg` | `#fbfaf7` | `#16181d` | `#f8f9fb` |
 | `--hairline` | `rgba(27, 28, 25, 0.09)` | `rgba(255, 255, 255, 0.10)` | `rgba(20, 23, 29, 0.09)` |
@@ -50,12 +50,18 @@
 
 ## 文案与画面克制纪律
 
+- **语言跟随用户（Language follows conversation）**：所有卡片标题、副标题、步骤与放大标注、对比标签（`before`/`after`）和图例默认跟随当前用户对话语言（中文对话输出中文，英文对话输出英文），仅在用户明确要求时切换其他语言。`before-after` 省略 `label` 时，脚本会按卡片语言自动填入 `对比前`/`对比后`（CJK）或 `BEFORE`/`AFTER`（非 CJK），也可通过 `lang: "zh" | "en"` 显式指定。
 - **单一文字锚点，不分散堆字**：每张展板只在左上角保留「品牌标 + 一句短主标题」（必要时紧跟 1 行短说明），不在右上角另起装饰标签或分散多处小字；顶栏版式（`window-callout`、`before-after`、`workflow-steps`、`module-bento`）统一单列左对齐，不渲染右上角漂浮眉标。
 - **禁止空洞凑数演示**：每张卡片都必须承载高信息密度的真实产品画面或肉眼立见的价值对比；禁止拿「70% 空白背景 + 几行简单代码」或单纯换浅色/深色皮肤的平淡截图做演示图。
 - **主标题**：中文不超过 12 字，英文不超过 6 词；在左侧栏中可自然换行成 2 行（支持 `\n` 显式断行）。
 - **副标题**：最多 1–2 短行（`19–21px`），紧跟主标题下方左对齐；标题与画面已说清时直接省略，容器自动收起不留空隙。
 - **字号不低于可读下限，冗余说明宁缺毋滥**：在 `1600px` 画布上所有可见文字硬性不低于 `14px`，正文说明、图例、卡片标题与副注渲染在 `15–21px`，确保在 `900px` README 或手机信息流缩略宽度下依然一眼可读；只要标题和截图本身已经说明重点，就直接省略 `caption` 和 `footer`，避免凑数小字。
 - **画面占比**：至少 70%–80% 的画布面积留给真实产品画面与克制呼吸留白。
+- **视觉张力四原则（Anti-Flatness）**：
+  1. **尺度反差**：用大主视觉 + 局部 2×–4× 放大（`window-callout`、`layered-hero`、`section-assembly`）制造视觉落差，避免所有格子平权铺满显得呆板。
+  2. **有依据的倾斜与分层**：仅在**存在真实物理/渲染分层**（如壁纸 + 窗口 + 透明前景）、**展示风格丰富度/整页氛围**（`gallery-wall` `tilted-pages`/`collage`）或**组图第 1 张封面破局**时使用倾斜拆层；需要细读代码、文字稿、时间轴刻度或前后严格对齐对比时保持端正横平竖直。
+  3. **前后对比 >50% 肉眼可见变化**：`before-after` 绝不把大部分画面浪费在未变化的静态弹窗上；横向时间轴、波形或宽条状对比优先用 `orientation: "stacked"`，必要时配合 `after.widthPercent` 与 `deltaBadge` 直观呈现缩短/减量幅度。
+  4. **同排媒介语境统一**：`workflow-steps` 与 `module-bento` 同排卡片必须保持统一背景/满出血或统一留白舞台（`fit: "contain"` 会自动加 18px 均匀舞台留白与圆角投影），禁止把裸露深色浮卡与满出血彩色壁纸桌面硬拼在同一排。
 - **真放大原则（Legibility First）**：连线放大框（`window-callout`）和局部对比图（`before-after`）的本质是把关键细节放大 **2×–4×**，确保读者在社媒缩略图或 900px 文档列宽下无需点开原图就能读清文字与控件；严禁把整张桌面窗口直接缩成微缩图塞进局部放大框或窄对比栏。
 - **明确禁止**：装饰贴纸、爆炸角标、空洞营销徽章（如 `New!`、`AI Powered`）、用代码硬画的假产品截图。
 
@@ -122,23 +128,24 @@
 
 ### 通用卡片字段
 
-- `id`（必填）：唯一文件名标识，仅允许字母、数字、连字符与下划线。
+- `id`（必填）：唯一文件名标识，须匹配 `^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$`（1–80 字符，以字母或数字开头，允许字母、数字、`.`、`_`、`-`）。
 - `layout`（必填）：八种版式名称之一。
 - `theme`（可选，继承顶层，默认 `"warm-paper"`）：`"warm-paper"`、`"dark-studio"` 或 `"cool-gallery"`。
 - `displayStyle`（可选，继承顶层或按主题默认）：`"serif"` 或 `"sans"`。
+- `lang`（可选，继承顶层，默认按卡片内容自动检测）：`"zh"` 或 `"en"`，用于显式控制自动默认标签（如 `对比前`/`对比后` 与 `BEFORE`/`AFTER`）和 HTML `lang` 属性。
 - `ratio`（可选，默认 `"16:9"`）：`"16:9"`、`"4:3"`、`"3:4"`、`"9:16"`、`"1:1"` 或 `"WxH"`。
 - `accent`（可选，默认取当前主题主墨色）：十六进制主题色，如 `"#38bdf8"`。
 - `brand`（可选）：单卡覆盖顶层 `brand`；设为 `null` 隐藏品牌条。
 - `title`（除全出血 `collage` 外必填）：主标题，支持 `\n` 换行。
 - `subtitle`（可选）：两行内副标题。
-- `eyebrow`（可选）：仅在 `layered-hero`、`section-assembly`、`layered-bento` 的右侧实景主图正上方渲染（标注真实页面名称，如 `• LIVE WEB DEMO · CAIRN`）；顶栏版式（`window-callout`、`before-after`、`workflow-steps`、`module-bento`）为保持单一左对齐文字锚点，不渲染右上角漂浮眉标。
+- `eyebrow`（可选）：在 `layered-hero`、`section-assembly`、`layered-bento`（右侧实景主图正上方）及 `gallery-wall`（`tilted-pages` 标题区或有标题的 `collage` 标题区）渲染；顶栏版式（`window-callout`、`before-after`、`workflow-steps`、`module-bento`）为保持单一左对齐文字锚点，不渲染右上角漂浮眉标。
 - `footer`（可选）：等宽页脚元信息，支持 `\n` 换行，八种版式均支持渲染。
 
 ### 通用图片槽位参数与截图比例建议
 
 所有版式的图片对象（`hero`、`layers[]`、`items[]`/`pages[]`、`showcase`、`sections[]` 及 `sections[].images[]` 对象项、`window`、`callouts[]`、`before`/`after`、`steps[]`）均统一支持三个可选参数：
 
-- `fit`（默认 `"cover"`）：`"cover"` 铺满裁切，或 `"contain"` 完整保留画面不裁边。
+- `fit`（默认 `"cover"`）：`"cover"` 满出血铺满裁切（零内边距），或 `"contain"` 完整保留画面不裁边。在 `workflow-steps`、`module-bento`、`before-after`、`layered-bento` 与 `window-callout` 放大卡上使用 `fit: "contain"` 时，容器会自动施加 `.is-contain` 均匀 18px 舞台内边距、圆角与柔和投影，避免横向浮卡左右贴死边框而上下留出大片空白带。
 - `position`（默认 `"top center"`，透明前景层默认 `"center bottom"`，切片/标注/对比默认 `"center"`）：标准 CSS `object-position`。
 - `bg`（可选）：容器底色（支持 `#RGB`/`#RRGGBB`/`#RRGGBBAA`、`rgb()`/`rgba()`、`transparent`）。配合 `fit: "contain"` 时填入截图本身底色可无缝融合。
 
@@ -165,8 +172,10 @@
    - `window`（必填）：`{ "image": "...", "label": "可选窗口标签", "fit": "contain", "position": "center", "bg": "..." }`（默认 `fit: "contain"` 并自动收缩外框贴合截图原生比例，零空边）。
    - `callouts`（必填，2–4 项）：每项含 `image`、`title`、`targetX`（`0`–`100`，相对主图实际渲染宽度）、`targetY`（`0`–`100`，相对主图实际渲染高度），可选 `targetW` / `targetH`（`1`–`100`，在主图目标区域绘制克制半透明聚焦框）、`index`（默认 `"01"`..）、`tag`（右上等宽小标签）、`caption`（简短说明）及 `fit`/`position`/`bg`。
 7. **`before-after`**：
-   - `before`（必填）：`{ "label": "BEFORE", "image": "...", "caption": "可选 1 行说明", "fit": "cover", "position": "center", "bg": "..." }`。
-   - `after`（必填）：同上结构（默认 `label: "AFTER"`），自动附带克制主题色细边与状态点。
+   - `orientation`（可选）：`"side-by-side"`（横版/方图默认）或 `"stacked"`（竖版默认；横版 `16:9`/`4:3` 显式设为 `"stacked"` 时上下全宽对比，适合横向时间轴、波形与宽幅长条）。
+   - `deltaBadge`（可选）：变化量胶囊文案（如 `"-7.1 s · 8 cuts removed"` 或 `"删去 8 处停顿 · 缩短 25%"`），以主题色展示在箭头旁或右侧虚线留白区中。
+   - `before`（必填）：`{ "label": "对比前 / BEFORE", "image": "...", "caption": "可选 1 行说明", "fit": "cover", "position": "center", "bg": "..." }`（省略 `label` 时中文卡片默认 `"对比前"`，英文卡片默认 `"BEFORE"`）。
+   - `after`（必填）：同上结构（省略 `label` 时中文卡片默认 `"对比后"`，英文卡片默认 `"AFTER"`），自动附带克制主题色细边与状态点；在 `stacked` 模式下还支持可选 `widthPercent`（`35`–`100`，默认 `100`），小于 `100` 时左对齐按该比例渲染 `after` 画框，并在右侧显示虚线斜纹区域标出缩减/节省的空间（若提供 `deltaBadge` 则居中落于该虚线区）。
    - `compareNote`（可选）：右下角等宽对比注释。
 8. **`workflow-steps`**：
    - `steps`（必填，3–4 项）：每项含 `image`、`title`，可选 `index`（默认 `"01"`..）、`caption`（1–2 行说明）及 `fit`/`position`/`bg`。
