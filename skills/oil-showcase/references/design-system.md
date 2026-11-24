@@ -18,17 +18,18 @@
 | 令牌 | `warm-paper`（暖纸编辑） | `dark-studio`（暗棚专业） | `cool-gallery`（冷灰建筑） |
 | --- | --- | --- | --- |
 | 默认适配产品 | 品牌官网、内容与消费产品、浅色应用 | 深色音视频剪辑器、IDE、专业桌面工作台 | 原生效率工具、仪表盘、现代 SaaS |
-| `--paper-base` | `#f6f3ec` | `#101114` | `#f2f4f7` |
-| `--paper-bg` | `#fbf9f4 -> #f6f3ec -> #efeae0` 径向柔光 | `#1a1c22 -> #101114 -> #0d0e11` 哑光暗棚 | `#fafbfd -> #f2f4f7 -> #e9edf2` 净灰柔光 |
-| `--ink` | `#1b1c19` | `#f3f4f6` | `#14171d` |
-| `--muted` | `#4a4d46` | `#b0b6c2` | `#4b525e` |
+| `--paper-base` | `#f5f1e8` | `#0c0e11` | `#eef1f5` |
+| `--paper-bg` | `#faf7f0 -> #f4efe4 -> #eae3d5` + 左上日光漫射 | `#11151b -> #0c0e11 -> #090c10` + 左上冷调主光 | `#f5f7fa -> #eef1f5 -> #e4e9f1` + 左上天光漫射 |
+| 纯代码颗粒质感 | SVG `feTurbulence` `0.88`（暖棉纸 `multiply 0.036`） | SVG `feTurbulence` `0.82`（阳极暗棚 `overlay 0.038`） | SVG `feTurbulence` `0.86`（细建筑哑光 `multiply 0.032`） |
+| `--ink` | `#1b1c19` | `#f5f7fa` | `#0b1220` |
+| `--muted` | `#4a4d46` | `#98a2b2` | `#526075` |
 | `--frame-bg` | `#ffffff` | `#17191e`（消除深色截图白边） | `#ffffff` |
-| `--surface-bg` | `#fbfaf7` | `#16181d` | `#f8f9fb` |
-| `--hairline` | `rgba(27, 28, 25, 0.09)` | `rgba(255, 255, 255, 0.10)` | `rgba(20, 23, 29, 0.09)` |
-| `--shadow-card` | `0 22px 48px -18px rgba(24,22,18,0.18)` | `0 28px 60px -20px rgba(0,0,0,0.68)` | `0 22px 48px -18px rgba(15,23,42,0.14)` |
+| `--surface-bg` | `#fbfaf7` | `#15181f` | `#f8fafc` |
+| `--hairline` | `rgba(27, 28, 25, 0.10)` | `rgba(255, 255, 255, 0.12)` | `rgba(15, 23, 42, 0.11)` |
+| 方向性投影 + 光学高光边 | 左上主光斜向投影 + `inset 0 1.2px 0` 高光沿 | 深邃方向投影 + `rgba(255,255,255,0.28)` 镜面顶沿 | 建筑感方向投影 + `rgba(255,255,255,0.46)` 锐利顶沿 |
 | 默认 `displayStyle` | `"serif"` | `"sans"` | `"sans"` |
 
-卡片圆角规则：主画幅窗口与 Bento 卡片使用 `14px`–`18px`；紧凑局部切片和分层底板使用 `10px`–`14px`。
+卡片圆角规则：主画幅窗口与 Bento 卡片使用 `14px`–`18px`；紧凑局部切片和分层底板使用 `10px`–`14px`。所有浮起画框统一自带纯代码左上主光斜向漫射、柔和主体反光与 1px 顶部光学高光沿，全程零外网请求、零 AI 生图。
 
 ## 产品主题色注入规则
 
@@ -57,10 +58,13 @@
 - **副标题**：最多 1–2 短行（`19–21px`），紧跟主标题下方左对齐；标题与画面已说清时直接省略，容器自动收起不留空隙。
 - **字号不低于可读下限，冗余说明宁缺毋滥**：在 `1600px` 画布上所有可见文字硬性不低于 `14px`，正文说明、图例、卡片标题与副注渲染在 `15–21px`，确保在 `900px` README 或手机信息流缩略宽度下依然一眼可读；只要标题和截图本身已经说明重点，就直接省略 `caption` 和 `footer`，避免凑数小字。
 - **画面占比**：至少 70%–80% 的画布面积留给真实产品画面与克制呼吸留白。
-- **视觉张力四原则（Anti-Flatness）**：
-  1. **尺度反差**：用大主视觉 + 局部 2×–4× 放大（`window-callout`、`layered-hero`、`section-assembly`）制造视觉落差，避免所有格子平权铺满显得呆板。
-  2. **有依据的倾斜与分层**：仅在**存在真实物理/渲染分层**（如壁纸 + 窗口 + 透明前景）、**展示风格丰富度/整页氛围**（`gallery-wall` `tilted-pages`/`collage`）或**组图第 1 张封面破局**时使用倾斜拆层；需要细读代码、文字稿、时间轴刻度或前后严格对齐对比时保持端正横平竖直。
-  3. **前后对比 >50% 肉眼可见变化**：`before-after` 绝不把大部分画面浪费在未变化的静态弹窗上；横向时间轴、波形或宽条状对比优先用 `orientation: "stacked"`，必要时配合 `after.widthPercent` 与 `deltaBadge` 直观呈现缩短/减量幅度。
+- **视觉张力与清晰度原则（Anti-Flatness & Razor-Sharp UI）**：
+  1. **纯代码光影与卡片后遮挡雕塑字**：弃用一切带边框的圆角胶囊标签（如 `[BEFORE]`、编号小方框），改用无边框大号雕塑字（`BEFORE` / `AFTER`、中文自动 `对比前` / `对比后`、`01` / `02` / `03`）置于 `z-index: 1` 卡片背后，被 `z-index: 3` 的高光顶沿自然遮挡底部 18%–25%，在不牺牲留白的前提下制造真实景深。
+  2. **默认横平竖直，克制微倾边界**：
+     - **默认端正 `0deg`（零旋转重采样，保持界面文字最高清）**：`before-after`、`window-callout`、`workflow-steps`（默认 `row`）、`module-bento`、`section-assembly`、`gallery-wall` 默认均保持横平竖直与规整网格秩序；如需微妙透视角度，可在卡片上显式声明 `"tilt": true`。
+     - **默认分层微倾（仅限真实分层与舞台叙事）**：`layered-hero`（`hero.tilt` 默认 `true`）与 `workflow-steps` `style: "staged"`（`tilt` 默认 `true`），两者均可通过 `"tilt": false` 一键切回完全端正。
+     - **多卡网格严禁散乱倾倒**：4 张以上多图网格（`gallery-wall`、`module-bento`、`section-assembly`、`workflow-steps` `row`）始终保持规整对齐与统一呼吸节奏。
+  3. **尺度与光影反差**：`before-after` 须有 >50% 肉眼可见变化；横版 `side-by-side` 在端正 `0deg` 下通过左卡略退缩 + 右卡更大更亮 + 主题反光晕 + 极简无框光束箭头建立主次；横向时间轴/波形优先用 `orientation: "stacked"` 配合 `after.widthPercent` + 发光竖向光学裁切线 + 右侧无框大号 `deltaBadge`。
   4. **同排媒介语境统一**：`workflow-steps` 与 `module-bento` 同排卡片必须保持统一背景/满出血或统一留白舞台（`fit: "contain"` 会自动加 18px 均匀舞台留白与圆角投影），禁止把裸露深色浮卡与满出血彩色壁纸桌面硬拼在同一排。
 - **真放大原则（Legibility First）**：连线放大框（`window-callout`）和局部对比图（`before-after`）的本质是把关键细节放大 **2×–4×**，确保读者在社媒缩略图或 900px 文档列宽下无需点开原图就能读清文字与控件；严禁把整张桌面窗口直接缩成微缩图塞进局部放大框或窄对比栏。
 - **明确禁止**：装饰贴纸、爆炸角标、空洞营销徽章（如 `New!`、`AI Powered`）、用代码硬画的假产品截图。
@@ -75,10 +79,10 @@
 | `layered-bento` | 同时展示左下分层原理与右侧同一产品的 2–6 个真实模块 | 左栏标题/分层叠卡/底部图例，右侧 2 列 Bento 网格 |
 | `section-assembly` | 拆解竖向整页或长图由哪些局部素材/模块拼装而成 | 左栏标题与编号摘要，中栏 2–5 组切片（支持单图或双图并排），右栏竖向长图 + SVG 虚线精准连线 |
 | `module-bento` | 平等陈列 2–6 个高质量真实功能模块或不同状态界面 | 顶部品牌与标题，下方宽敞 3×2、2×2 或 2+3 网格，支持 `accent` 编号与标签 |
-| `gallery-wall` | 展示多页完整网站、多屏 App 或多风格视觉墙 | `tilted-pages`（左栏标题 + 右侧 2–4 张 `-4deg` 倾斜整页）或 `collage`（倾斜画廊拼接墙，可选底部透明前景叠加） |
-| `window-callout` | 解剖桌面窗口、剪辑工作台、仪表盘或复杂界面，并把 2–4 处细节真放大 | 横版默认左右分栏（`arrangement: "split"`）：左侧大尺寸主窗口自动贴合原生比例 + 右侧 2–4 张宽幅放大卡与水平曲线虚线；超宽条状界面可切 `arrangement: "stacked"`；`3:4`/`9:16` 竖版顶部主窗口配高对比编号锚点、下方横排放大卡 |
-| `before-after` | 直观对比开启前/后、AI 处理前后、改版前后或深浅双态 | 顶部标题栏，双侧等大画框（竖版自动上下堆叠），外置克制胶囊标签、居中过渡箭头桥接，并对 `after` 施加克制主题细边 |
-| `workflow-steps` | 展示 3–4 步连贯产品工作流（如录制→剪辑→导出、采集→整理→分享） | 顶部标题栏，横版 3–4 张带细箭头串联的图文步骤卡；`3:4` 三步自动转为竖向横卡串联、四步与 `1:1` 转为 2×2 网格 |
+| `gallery-wall` | 展示多页完整网站、多屏 App 或多风格视觉墙 | `tilted-pages`（左栏标题 + 右侧 2–4 张规整多页，默认 `0deg`，可显式加 `tilt: true`）或 `collage`（规整画廊拼接墙，可选底部透明前景叠加） |
+| `window-callout` | 解剖桌面窗口、剪辑工作台、仪表盘或复杂界面，并把 2–4 处细节真放大 | 横版默认全高左右分栏（`arrangement: "split"`）：左侧标题 + 端正高清主窗口（平面内聚焦框零漂移，可选 `tilt: true`）+ 右侧 2–4 张卡片后遮挡编号（`01`–`04`）放大面板与发光虚线标线；超宽条状界面可切 `arrangement: "stacked"`；`3:4`/`9:16` 竖版顶部主窗口配高对比定位针、下方横排放大卡 |
+| `before-after` | 直观对比开启前/后、AI 处理前后、改版前后或深浅双态 | 顶部标题栏，横版端正 `0deg` 尺度对比（左卡略退缩、右卡放大提亮，可选 `tilt: true`），卡片后遮挡雕塑字（`BEFORE`/`AFTER` 或 `对比前`/`对比后`）配极简无框光束箭头；`stacked` 配合 `after.widthPercent < 100` 渲染发光竖向光学裁切线与无框大号 `deltaBadge` |
+| `workflow-steps` | 展示 3–4 步连贯产品工作流（如录制→剪辑→导出、采集→整理→分享） | 默认 `style: "row"`（横版 3–4 张端正对齐卡配背后遮挡序号 `01`–`04` 与细箭头，`3:4`/`9:16` 自动竖排或 2×2）；可选 `style: "staged"`（左侧里程碑栏 + 右侧非对称 3D 层次舞台与背后大号序号，支持 `tilt: false` 切平） |
 
 ### 画幅比例与自动适配
 
@@ -140,6 +144,7 @@
 - `subtitle`（可选）：两行内副标题。
 - `eyebrow`（可选）：在 `layered-hero`、`section-assembly`、`layered-bento`（右侧实景主图正上方）及 `gallery-wall`（`tilted-pages` 标题区或有标题的 `collage` 标题区）渲染；顶栏版式（`window-callout`、`before-after`、`workflow-steps`、`module-bento`）为保持单一左对齐文字锚点，不渲染右上角漂浮眉标。
 - `footer`（可选）：等宽页脚元信息，支持 `\n` 换行，八种版式均支持渲染。
+- `tilt`（可选，布尔值）：精细控制卡片微倾。`before-after`、`window-callout`、`gallery-wall`、`section-assembly` 默认为 `false`（端正 `0deg`，保持界面截图文字最高清），显式设为 `true` 时开启微妙建筑倾斜；`layered-hero` 与 `workflow-steps`（`style: "staged"`）默认为 `true`，可设为 `false` 关闭倾斜。
 
 ### 通用图片槽位参数与截图比例建议
 
@@ -164,18 +169,21 @@
 
 1. **`layered-hero`**：`layers`（2–3 项，含 `image`、`label`、可选 `transparent` 及槽位参数）、`showIndexBadges`（默认 `false`）、`hero`（含 `image`、可选 `tilt` 及槽位参数）。
 2. **`layered-bento`**：`layers`（2–3 项）、`showIndexBadges`（默认 `true`）、`items`（2–6 项，含 `image`、可选 `label` 及槽位参数）。
-3. **`section-assembly`**：`sections`（2–5 项，含 `caption`、`summary`、`targetY`、`image` 或 `images` 路径/对象数组、`ratios` 及段级槽位参数）、`showcase`（含 `image`、可选 `tilt` 及槽位参数）。
+3. **`section-assembly`**：`sections`（2–5 项，含 `caption`、`summary`、`targetY`、`image` 或 `images` 路径/对象数组、`ratios` 及段级槽位参数）、`showcase`（含 `image`、可选 `tilt` 默认 `false` 及槽位参数）。
 4. **`module-bento`**：`items`（2–6 项，含 `image`、可选 `index`、`label`/`caption` 及槽位参数）、`columns`（可选 `2` 或 `3`）。
-5. **`gallery-wall`**：`variant`（`"tilted-pages"` 或 `"collage"`）、`items`（也接受别名 `pages`）、`foreground`（可选，仅 `collage` 底部透明前景层）。
+5. **`gallery-wall`**：`variant`（`"tilted-pages"` 或 `"collage"`）、`tilt`（可选，默认 `false`）、`items`（也接受别名 `pages`）、`foreground`（可选，仅 `collage` 底部透明前景层）。
 6. **`window-callout`**：
-   - `arrangement`（可选，默认 `"split"`）：横版可选 `"split"`（左大主窗口 + 右侧放大卡堆叠 + 水平虚线，推荐）或 `"stacked"`（上主窗口 + 下排卡片 + 纵向虚线，仅用于超宽条状界面）。
+   - `arrangement`（可选，默认 `"split"`）：横版可选 `"split"`（左标题+高清主窗口 + 右侧全高放大卡堆叠与发光虚线，推荐）或 `"stacked"`（上主窗口 + 下排卡片 + 纵向虚线，仅用于超宽条状界面）。
+   - `tilt`（可选，默认 `false`）：默认端正 `0deg` 保持文字锐利；设为 `true` 时为主窗口启用微妙 3D 透视角度，聚焦框随窗口平面精确投影，标线零漂移。
    - `window`（必填）：`{ "image": "...", "label": "可选窗口标签", "fit": "contain", "position": "center", "bg": "..." }`（默认 `fit: "contain"` 并自动收缩外框贴合截图原生比例，零空边）。
-   - `callouts`（必填，2–4 项）：每项含 `image`、`title`、`targetX`（`0`–`100`，相对主图实际渲染宽度）、`targetY`（`0`–`100`，相对主图实际渲染高度），可选 `targetW` / `targetH`（`1`–`100`，在主图目标区域绘制克制半透明聚焦框）、`index`（默认 `"01"`..）、`tag`（右上等宽小标签）、`caption`（简短说明）及 `fit`/`position`/`bg`。
+   - `callouts`（必填，2–4 项）：每项含 `image`、`title`、`targetX`（`0`–`100`，相对主图实际渲染宽度）、`targetY`（`0`–`100`，相对主图实际渲染高度），可选 `targetW` / `targetH`（`1`–`100`，在主图平面内绘制发光聚焦框）、`index`（默认 `"01"`..，渲染为卡片后遮挡大号雕塑字）、`tag`（等宽副标签）、`caption`（简短副说明）及 `fit`/`position`/`bg`。
 7. **`before-after`**：
    - `orientation`（可选）：`"side-by-side"`（横版/方图默认）或 `"stacked"`（竖版默认；横版 `16:9`/`4:3` 显式设为 `"stacked"` 时上下全宽对比，适合横向时间轴、波形与宽幅长条）。
-   - `deltaBadge`（可选）：变化量胶囊文案（如 `"-7.1 s · 8 cuts removed"` 或 `"删去 8 处停顿 · 缩短 25%"`），以主题色展示在箭头旁或右侧虚线留白区中。
-   - `before`（必填）：`{ "label": "对比前 / BEFORE", "image": "...", "caption": "可选 1 行说明", "fit": "cover", "position": "center", "bg": "..." }`（省略 `label` 时中文卡片默认 `"对比前"`，英文卡片默认 `"BEFORE"`）。
-   - `after`（必填）：同上结构（省略 `label` 时中文卡片默认 `"对比后"`，英文卡片默认 `"AFTER"`），自动附带克制主题色细边与状态点；在 `stacked` 模式下还支持可选 `widthPercent`（`35`–`100`，默认 `100`），小于 `100` 时左对齐按该比例渲染 `after` 画框，并在右侧显示虚线斜纹区域标出缩减/节省的空间（若提供 `deltaBadge` 则居中落于该虚线区）。
+   - `tilt`（可选，默认 `false`）：默认端正 `0deg` 并保持左右尺度与光影反差；设为 `true` 时开启微妙建筑倾斜。
+   - `deltaBadge`（可选）：无框大号变化量文案（如 `"-7.1 s · 8 cuts removed"` 或 `"-7.1 s · 删去 8 处停顿"`，含 `·` 时自动拆分为主数值 + 等宽副注），在 `widthPercent < 100` 时落于右侧渐变回收区与发光光学裁切线旁。
+   - `before`（必填）：`{ "label": "对比前 / BEFORE", "meta": "可选右侧等宽短注", "image": "...", "caption": "可选 1 行说明", "fit": "cover", "position": "center", "bg": "..." }`（省略 `label` 时中文卡片默认 `"对比前"`，英文卡片默认 `"BEFORE"`，渲染为卡片后遮挡雕塑字）。
+   - `after`（必填）：同上结构（省略 `label` 时中文卡片默认 `"对比后"`，英文卡片默认 `"AFTER"`），自带更强主体投影、主题反光晕与光学高光顶沿；在 `stacked` 模式下还支持可选 `widthPercent`（`35`–`100`，默认 `100`），小于 `100` 时左对齐按该比例渲染 `after` 画框，并在右侧绘制发光竖向光学裁切线与柔光回收区。
    - `compareNote`（可选）：右下角等宽对比注释。
 8. **`workflow-steps`**：
+   - `style`（可选，默认 `"row"`）：`"row"`（规整横排/竖排步骤卡配卡片后遮挡序号 `01`–`04`）或 `"staged"`（横版左侧里程碑栏 + 右侧非对称 3D 层次舞台与背后遮挡大号序号，默认 `tilt: true`，支持 `tilt: false` 切平）。
    - `steps`（必填，3–4 项）：每项含 `image`、`title`，可选 `index`（默认 `"01"`..）、`caption`（1–2 行说明）及 `fit`/`position`/`bg`。

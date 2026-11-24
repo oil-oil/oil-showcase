@@ -82,7 +82,14 @@ SUPPORTED_THEMES = (
 SUPPORTED_DISPLAY_STYLES = ("serif", "sans")
 SUPPORTED_WC_ARRANGEMENTS = ("split", "stacked")
 SUPPORTED_BA_ORIENTATIONS = ("side-by-side", "stacked")
+SUPPORTED_WS_STYLES = ("row", "staged")
 SUPPORTED_LANGS = ("zh", "en")
+
+THEME_GRAIN_FREQUENCY: dict[str, str] = {
+    "warm-paper": "0.88",
+    "dark-studio": "0.82",
+    "cool-gallery": "0.86",
+}
 
 THEME_DEFAULT_DISPLAY: dict[str, str] = {
     "warm-paper": "serif",
@@ -123,7 +130,7 @@ def is_cjk_card(card: dict[str, Any]) -> bool:
         return False
 
     samples: list[str] = []
-    for key in ("title", "subtitle", "eyebrow", "footer", "compareNote"):
+    for key in ("title", "subtitle", "eyebrow", "footer", "compareNote", "deltaBadge"):
         val = card.get(key)
         if isinstance(val, str) and val:
             samples.append(val)
@@ -148,7 +155,7 @@ def is_cjk_card(card: dict[str, Any]) -> bool:
     for side_key in ("before", "after", "window"):
         side = card.get(side_key)
         if isinstance(side, dict):
-            for sub_key in ("label", "caption"):
+            for sub_key in ("label", "caption", "meta", "tag"):
                 val = side.get(sub_key)
                 if isinstance(val, str) and val:
                     samples.append(val)
@@ -1067,6 +1074,14 @@ def validate_spec(
             lang_probe.pop("lang", None)
         card_is_cjk = is_cjk_card(lang_probe)
 
+        card_tilt_raw = raw.get("tilt")
+        explicit_tilt: bool | None = None
+        if card_tilt_raw is not None:
+            if not isinstance(card_tilt_raw, bool):
+                errors.append(f"{label}.tilt 必须是布尔值 true 或 false。")
+            else:
+                explicit_tilt = card_tilt_raw
+
         card: dict[str, Any] = {
             "id": card_id,
             "layout": layout,
@@ -1089,6 +1104,7 @@ def validate_spec(
             "subtitle": subtitle,
             "eyebrow": eyebrow,
             "footer": footer,
+            "tilt": explicit_tilt if explicit_tilt is not None else False,
         }
 
         if layout in ("layered-hero", "layered-bento"):
@@ -1152,9 +1168,14 @@ def validate_spec(
                     default_fit="cover",
                     default_position="top center",
                 )
+                hero_tilt = (
+                    bool(raw_hero.get("tilt"))
+                    if "tilt" in raw_hero
+                    else (explicit_tilt if explicit_tilt is not None else True)
+                )
                 card["hero"] = {
                     "image": uri,
-                    "tilt": bool(raw_hero.get("tilt", True)),
+                    "tilt": hero_tilt,
                     "fit": fit,
                     "position": position,
                     "bg": bg,
@@ -1341,9 +1362,14 @@ def validate_spec(
                     default_fit="cover",
                     default_position="top center",
                 )
+                showcase_tilt = (
+                    bool(raw_showcase.get("tilt"))
+                    if "tilt" in raw_showcase
+                    else (explicit_tilt if explicit_tilt is not None else False)
+                )
                 card["showcase"] = {
                     "image": uri,
-                    "tilt": bool(raw_showcase.get("tilt", True)),
+                    "tilt": showcase_tilt,
                     "fit": fit,
                     "position": position,
                     "bg": bg,
@@ -1500,6 +1526,7 @@ def validate_spec(
                             width_pct = float(raw_wp)
                     card[side_key] = {
                         "label": str(raw_side.get("label") or default_lbl).strip(),
+                        "meta": str(raw_side.get("meta") or raw_side.get("tag") or "").strip(),
                         "image": uri,
                         "caption": str(raw_side.get("caption", "")).strip(),
                         "fit": fit,
@@ -1510,6 +1537,16 @@ def validate_spec(
             card["compareNote"] = str(raw.get("compareNote", "")).strip()
 
         if layout == "workflow-steps":
+            ws_style = str(raw.get("style") or "row").strip().lower()
+            if ws_style not in SUPPORTED_WS_STYLES:
+                errors.append(
+                    f"{label}.style 无效（{ws_style!r}）；可选值：{', '.join(SUPPORTED_WS_STYLES)}。"
+                )
+                ws_style = "row"
+            card["wsStyle"] = ws_style
+            card["tilt"] = (
+                explicit_tilt if explicit_tilt is not None else (ws_style == "staged")
+            )
             raw_steps = raw.get("steps")
             if not isinstance(raw_steps, list) or not (3 <= len(raw_steps) <= 4):
                 errors.append(f"{label}.steps 必须包含 3 到 4 个步骤项。")
@@ -1562,8 +1599,20 @@ def validate_spec(
 
 COMMON_CSS = """
 :root {
-  --paper-base: #f6f3ec;
-  --paper-bg: radial-gradient(ellipse 85% 75% at 22% 18%, #fbf9f4 0%, #f6f3ec 55%, #efeae0 100%);
+  --paper-base: #f5f1e8;
+  --paper-bg:
+    radial-gradient(ellipse 58% 46% at 10% -4%, rgba(255, 253, 248, 0.94) 0%, rgba(255, 252, 245, 0.34) 44%, rgba(245, 241, 232, 0) 74%),
+    linear-gradient(142deg, #faf7f0 0%, #f4efe4 48%, #eae3d5 100%);
+  --key-light-bg: linear-gradient(
+    126deg,
+    rgba(255, 253, 248, 0.72) 0%,
+    rgba(255, 250, 240, 0.22) 24%,
+    rgba(255, 255, 255, 0) 48%
+  );
+  --glow-strength: 10%;
+  --glow-secondary: 6%;
+  --grain-opacity: 0.036;
+  --grain-blend: multiply;
   --ink: #1b1c19;
   --muted: #4a4d46;
   --meta: #5e6159;
@@ -1573,76 +1622,149 @@ COMMON_CSS = """
   --caption-ink: #474a42;
   --frame-bg: #ffffff;
   --surface-bg: #fbfaf7;
-  --pill-bg: rgba(255, 255, 255, 0.92);
-  --pill-border: rgba(27, 28, 25, 0.10);
-  --hairline: rgba(27, 28, 25, 0.09);
+  --hairline: rgba(27, 28, 25, 0.10);
   --glass-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.06) 100%);
   --glass-border: rgba(255, 255, 255, 0.68);
   --glass-inner-ring: rgba(27, 28, 25, 0.08);
-  --shadow-card: 0 22px 48px -18px rgba(24, 22, 18, 0.18), 0 4px 12px -4px rgba(24, 22, 18, 0.08);
-  --shadow-plate: 0 18px 38px -14px rgba(24, 22, 18, 0.22), 0 3px 10px -3px rgba(24, 22, 18, 0.10);
-  --connector-opacity: 0.50;
-  --halo-ring: rgba(255, 255, 255, 0.90);
-  --bridge-bg: #fbfaf7;
-  --bridge-border: rgba(27, 28, 25, 0.12);
-  --bridge-ink: #2f312b;
-  --font-serif: 'Playfair Display', 'Songti SC', 'Noto Serif CJK SC', 'STSong', Georgia, serif;
-  --font-sans: 'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --shadow-card:
+    14px 28px 62px -12px rgba(24, 22, 18, 0.20),
+    5px 10px 22px -6px rgba(24, 22, 18, 0.11),
+    0 0 0 1px rgba(27, 28, 25, 0.09);
+  --shadow-plate:
+    10px 20px 44px -10px rgba(24, 22, 18, 0.22),
+    4px 8px 16px -4px rgba(24, 22, 18, 0.12),
+    0 0 0 1px rgba(27, 28, 25, 0.09);
+  --shadow-hero:
+    22px 42px 86px -14px rgba(24, 22, 18, 0.26),
+    8px 16px 32px -6px rgba(24, 22, 18, 0.14),
+    0 0 0 1px rgba(27, 28, 25, 0.11);
+  --rim-top: rgba(255, 255, 255, 0.72);
+  --rim-left: rgba(255, 255, 255, 0.36);
+  --rim-bottom: rgba(27, 28, 25, 0.14);
+  --sheen-grad: linear-gradient(
+    126deg,
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.03) 24%,
+    rgba(255, 255, 255, 0) 48%
+  );
+  --occluded-ink: rgba(27, 28, 25, 0.22);
+  --occluded-accent-mix: 36%;
+  --connector-opacity: 0.78;
+  --halo-ring: rgba(255, 255, 255, 0.92);
+  --font-serif: 'Playfair Display', 'Songti SC', 'Noto Serif SC', 'Noto Serif CJK SC', 'STSong', Georgia, serif;
+  --font-sans: 'Inter', 'PingFang SC', 'Noto Sans SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .theme-dark-studio {
-  --paper-base: #101114;
-  --paper-bg: radial-gradient(ellipse 85% 75% at 24% 16%, #1a1c22 0%, #101114 58%, #0d0e11 100%);
-  --ink: #f3f4f6;
-  --muted: #b0b6c2;
-  --meta: #8e95a3;
-  --sep: #5b6270;
+  --paper-base: #0c0e11;
+  --paper-bg:
+    radial-gradient(ellipse 52% 46% at 10% -6%, rgba(212, 228, 255, 0.105) 0%, rgba(140, 166, 206, 0.03) 42%, rgba(12, 14, 17, 0) 70%),
+    linear-gradient(142deg, #11151b 0%, #0c0e11 48%, #090c10 100%);
+  --key-light-bg: linear-gradient(
+    126deg,
+    rgba(255, 255, 255, 0.072) 0%,
+    rgba(222, 236, 255, 0.022) 22%,
+    rgba(255, 255, 255, 0) 46%
+  );
+  --glow-strength: 18%;
+  --glow-secondary: 13%;
+  --grain-opacity: 0.038;
+  --grain-blend: overlay;
+  --ink: #f5f7fa;
+  --muted: #98a2b2;
+  --meta: #7e8a99;
+  --sep: #4b5563;
   --eyebrow-ink: #c7cdd8;
   --body-ink: #dfe3eb;
-  --caption-ink: #bcc2ce;
+  --caption-ink: #adb6c4;
   --frame-bg: #17191e;
-  --surface-bg: #16181d;
-  --pill-bg: rgba(24, 27, 34, 0.92);
-  --pill-border: rgba(255, 255, 255, 0.12);
-  --hairline: rgba(255, 255, 255, 0.10);
+  --surface-bg: #15181f;
+  --hairline: rgba(255, 255, 255, 0.12);
   --glass-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.03) 100%);
   --glass-border: rgba(255, 255, 255, 0.22);
   --glass-inner-ring: rgba(255, 255, 255, 0.08);
-  --shadow-card: 0 28px 60px -20px rgba(0, 0, 0, 0.68), 0 6px 18px -4px rgba(0, 0, 0, 0.45);
-  --shadow-plate: 0 22px 46px -16px rgba(0, 0, 0, 0.72), 0 5px 14px -4px rgba(0, 0, 0, 0.48);
-  --connector-opacity: 0.72;
-  --halo-ring: rgba(16, 17, 20, 0.88);
-  --bridge-bg: #1a1d24;
-  --bridge-border: rgba(255, 255, 255, 0.14);
-  --bridge-ink: #e5e7eb;
+  --shadow-card:
+    22px 42px 88px rgba(0, 0, 0, 0.80),
+    8px 16px 32px rgba(0, 0, 0, 0.58),
+    2px 4px 10px rgba(0, 0, 0, 0.44),
+    0 0 0 1px rgba(255, 255, 255, 0.14);
+  --shadow-plate:
+    18px 32px 68px rgba(0, 0, 0, 0.78),
+    7px 13px 26px rgba(0, 0, 0, 0.54),
+    0 0 0 1px rgba(255, 255, 255, 0.14);
+  --shadow-hero:
+    26px 48px 102px rgba(0, 0, 0, 0.86),
+    10px 20px 38px rgba(0, 0, 0, 0.64),
+    0 0 0 1px rgba(255, 255, 255, 0.17);
+  --rim-top: rgba(255, 255, 255, 0.28);
+  --rim-left: rgba(255, 255, 255, 0.13);
+  --rim-bottom: rgba(0, 0, 0, 0.54);
+  --sheen-grad: linear-gradient(
+    125deg,
+    rgba(255, 255, 255, 0.085) 0%,
+    rgba(255, 255, 255, 0.02) 25%,
+    rgba(255, 255, 255, 0) 48%
+  );
+  --occluded-ink: rgba(255, 255, 255, 0.24);
+  --occluded-accent-mix: 40%;
+  --connector-opacity: 0.90;
+  --halo-ring: rgba(12, 14, 17, 0.90);
 }
 
 .theme-cool-gallery {
-  --paper-base: #f2f4f7;
-  --paper-bg: radial-gradient(ellipse 85% 75% at 22% 18%, #fafbfd 0%, #f2f4f7 56%, #e9edf2 100%);
-  --ink: #14171d;
-  --muted: #4b525e;
-  --meta: #616976;
-  --sep: #8f98a6;
+  --paper-base: #eef1f5;
+  --paper-bg:
+    radial-gradient(ellipse 58% 46% at 10% -4%, rgba(255, 255, 255, 0.94) 0%, rgba(255, 255, 255, 0.36) 44%, rgba(238, 241, 245, 0) 74%),
+    linear-gradient(142deg, #f5f7fa 0%, #eef1f5 46%, #e4e9f1 100%);
+  --key-light-bg: linear-gradient(
+    126deg,
+    rgba(255, 255, 255, 0.74) 0%,
+    rgba(255, 255, 255, 0.24) 24%,
+    rgba(255, 255, 255, 0) 48%
+  );
+  --glow-strength: 14%;
+  --glow-secondary: 9%;
+  --grain-opacity: 0.032;
+  --grain-blend: multiply;
+  --ink: #0b1220;
+  --muted: #526075;
+  --meta: #64748b;
+  --sep: #94a3b8;
   --eyebrow-ink: #3e4552;
-  --body-ink: #20252e;
-  --caption-ink: #464d59;
+  --body-ink: #1e293b;
+  --caption-ink: #475569;
   --frame-bg: #ffffff;
-  --surface-bg: #f8f9fb;
-  --pill-bg: rgba(255, 255, 255, 0.92);
-  --pill-border: rgba(20, 23, 29, 0.10);
-  --hairline: rgba(20, 23, 29, 0.09);
+  --surface-bg: #f8fafc;
+  --hairline: rgba(15, 23, 42, 0.11);
   --glass-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0.08) 100%);
   --glass-border: rgba(255, 255, 255, 0.74);
-  --glass-inner-ring: rgba(20, 23, 29, 0.08);
-  --shadow-card: 0 22px 48px -18px rgba(15, 23, 42, 0.14), 0 4px 12px -4px rgba(15, 23, 42, 0.07);
-  --shadow-plate: 0 18px 38px -14px rgba(15, 23, 42, 0.18), 0 3px 10px -3px rgba(15, 23, 42, 0.09);
-  --connector-opacity: 0.54;
-  --halo-ring: rgba(255, 255, 255, 0.90);
-  --bridge-bg: #ffffff;
-  --bridge-border: rgba(20, 23, 29, 0.11);
-  --bridge-ink: #1f242d;
+  --glass-inner-ring: rgba(15, 23, 42, 0.08);
+  --shadow-card:
+    18px 34px 72px rgba(15, 23, 42, 0.22),
+    6px 14px 28px rgba(15, 23, 42, 0.13),
+    0 0 0 1px rgba(15, 23, 42, 0.14);
+  --shadow-plate:
+    14px 24px 52px rgba(15, 23, 42, 0.20),
+    5px 10px 20px rgba(15, 23, 42, 0.11),
+    0 0 0 1px rgba(15, 23, 42, 0.13);
+  --shadow-hero:
+    26px 46px 96px rgba(15, 23, 42, 0.30),
+    10px 18px 36px rgba(15, 23, 42, 0.18),
+    0 0 0 1px color-mix(in srgb, var(--accent) 28%, rgba(15, 23, 42, 0.18));
+  --rim-top: rgba(255, 255, 255, 0.46);
+  --rim-left: rgba(255, 255, 255, 0.22);
+  --rim-bottom: rgba(15, 23, 42, 0.20);
+  --sheen-grad: linear-gradient(
+    126deg,
+    rgba(255, 255, 255, 0.11) 0%,
+    rgba(255, 255, 255, 0.025) 24%,
+    rgba(255, 255, 255, 0) 48%
+  );
+  --occluded-ink: rgba(15, 23, 42, 0.22);
+  --occluded-accent-mix: 36%;
+  --connector-opacity: 0.80;
+  --halo-ring: rgba(255, 255, 255, 0.92);
 }
 
 *, *::before, *::after {
@@ -1659,7 +1781,7 @@ html, body {
   color: var(--ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  text-rendering: geometricPrecision;
 }
 
 .sc-canvas {
@@ -1669,6 +1791,166 @@ html, body {
   overflow: hidden;
   background: var(--paper-bg);
   color: var(--ink);
+}
+
+/* Pure-code studio key light, ambient accent bounce & fine matte surface grain */
+.sc-studio-keylight {
+  position: absolute;
+  inset: -120px;
+  background: var(--key-light-bg);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.sc-ambient-bounce {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 46% 58% at 72% 62%, color-mix(in srgb, var(--accent) var(--glow-strength), transparent) 0%, color-mix(in srgb, var(--accent) 4%, transparent) 46%, transparent 74%),
+    radial-gradient(ellipse 38% 52% at 28% 66%, color-mix(in srgb, var(--accent) var(--glow-secondary), transparent) 0%, transparent 72%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.layout-window-callout .sc-ambient-bounce {
+  background:
+    radial-gradient(ellipse 48% 62% at 34% 62%, color-mix(in srgb, var(--accent) var(--glow-strength), transparent) 0%, color-mix(in srgb, var(--accent) 4%, transparent) 46%, transparent 74%),
+    radial-gradient(ellipse 38% 56% at 84% 52%, color-mix(in srgb, var(--accent) var(--glow-secondary), transparent) 0%, transparent 72%);
+}
+
+.layout-workflow-steps.ws-style-staged .sc-ambient-bounce {
+  background:
+    radial-gradient(ellipse 56% 74% at 84% 48%, color-mix(in srgb, var(--accent) var(--glow-strength), transparent) 0%, color-mix(in srgb, var(--accent) 5%, transparent) 44%, transparent 74%),
+    radial-gradient(ellipse 40% 48% at 54% 78%, color-mix(in srgb, var(--accent) var(--glow-secondary), transparent) 0%, transparent 70%);
+}
+
+.sc-grain {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: var(--grain-opacity);
+  mix-blend-mode: var(--grain-blend);
+  pointer-events: none;
+  z-index: 25;
+}
+
+.sc-canvas > :not(.sc-studio-keylight):not(.sc-ambient-bounce):not(.sc-grain):not(.sc-connectors):not(.gw-collage-title-block):not(.gw-collage-slot):not(.gw-foreground):not(.ws-staged-left):not(.ws-staged-arena) {
+  position: relative;
+  z-index: 2;
+}
+
+/* Optical top-left specular rim highlight & subtle oblique glass sheen on elevated frames */
+.sc-frame::after,
+.wc-window-frame::after,
+.wc-callout-frame::after,
+.ba-frame::after,
+.ws-step-card::after,
+.ws-stage-plane::after,
+.mb-card::after,
+.lb-tile::after,
+.sa-plate::after,
+.sa-showcase::after,
+.gw-page-frame::after,
+.gw-collage-slot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--sheen-grad);
+  box-shadow:
+    inset 0 1.2px 0 var(--rim-top),
+    inset 1px 0 0 var(--rim-left),
+    inset 0 -1px 0 var(--rim-bottom);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Behind-the-card occluded sculptural typography (replaces all bordered pills) */
+.sc-occluded-header {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 12px 0 10px;
+  margin-bottom: -14px;
+  z-index: 1;
+  pointer-events: none;
+  flex: none;
+}
+
+.sc-occluded-header.is-compact-occlude {
+  margin-bottom: -10px;
+}
+
+.sc-occluded-label {
+  font-family: var(--font-sans);
+  font-size: 76px;
+  font-weight: 600;
+  line-height: 0.80;
+  letter-spacing: -0.058em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  color: var(--occluded-ink);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.sc-occluded-label.is-cjk {
+  font-family: var(--font-sans);
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 0.90;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.display-serif .sc-occluded-label.is-cjk {
+  font-family: var(--font-serif);
+  font-weight: 600;
+}
+
+.sc-occluded-label.is-medium {
+  font-size: 56px;
+  letter-spacing: -0.044em;
+}
+
+.sc-occluded-label.is-medium.is-cjk {
+  font-size: 46px;
+  letter-spacing: 0.015em;
+}
+
+.sc-occluded-label.is-long {
+  font-size: 42px;
+  letter-spacing: -0.032em;
+}
+
+.sc-occluded-label.is-long.is-cjk {
+  font-size: 38px;
+  letter-spacing: 0.01em;
+}
+
+.sc-occluded-label.is-accent {
+  color: color-mix(in srgb, var(--accent) var(--occluded-accent-mix), transparent);
+  text-shadow: 0 0 36px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.sc-occluded-meta {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--meta);
+  padding-bottom: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sc-occluded-meta.is-accent {
+  color: var(--accent);
 }
 
 .sc-brand {
@@ -1683,9 +1965,13 @@ html, body {
 .sc-brand-icon {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: 7px;
   object-fit: contain;
   display: block;
+}
+
+.theme-dark-studio .sc-brand-icon {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
 }
 
 .sc-brand-name {
@@ -1724,8 +2010,8 @@ html, body {
 .display-sans .sc-title {
   font-family: var(--font-sans);
   font-weight: 600;
-  letter-spacing: -0.032em;
-  line-height: 1.07;
+  letter-spacing: -0.036em;
+  line-height: 1.06;
 }
 
 .display-sans .sc-title.is-cjk {
@@ -1736,9 +2022,9 @@ html, body {
 
 .sc-subtitle {
   font-family: var(--font-sans);
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 400;
-  line-height: 1.48;
+  line-height: 1.46;
   color: var(--muted);
   text-wrap: balance;
 }
@@ -1765,10 +2051,12 @@ html, body {
 
 .sc-footer {
   font-family: var(--font-mono);
-  font-size: 14.5px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.45;
   color: var(--meta);
-  letter-spacing: 0.01em;
+  letter-spacing: 0.04em;
+  position: relative;
+  z-index: 4;
 }
 
 .sc-legend {
@@ -1839,20 +2127,17 @@ html, body {
   object-position: center bottom;
 }
 
-.sc-layer-badge {
+.sc-layer-index {
   position: absolute;
   top: 10px;
-  left: 10px;
+  left: 12px;
   z-index: 4;
-  padding: 4px 9px;
-  border-radius: 6px;
-  background: var(--pill-bg);
-  border: 1px solid var(--pill-border);
   font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--accent);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
+  text-shadow: 0 1px 10px var(--halo-ring);
+  pointer-events: none;
 }
 
 /* ---------- 1. layered-hero ---------- */
@@ -2267,7 +2552,6 @@ html, body {
   border: 1px solid var(--hairline);
   background: var(--frame-bg);
   box-shadow: var(--shadow-plate);
-  transform: rotate(-1.2deg);
   min-width: 0;
 }
 
@@ -2290,6 +2574,7 @@ html, body {
 }
 
 .sa-showcase {
+  position: relative;
   flex: 1;
   min-height: 0;
   border-radius: 16px 16px 0 0;
@@ -2316,7 +2601,7 @@ html, body {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 3;
+  z-index: 11;
 }
 
 /* section-assembly portrait / square */
@@ -2554,29 +2839,35 @@ html, body {
   position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 28px;
-  padding: 46px 0 36px 20px;
+  gap: 24px;
+  padding: 44px 36px 36px 16px;
   overflow: hidden;
+  z-index: 2;
 }
 
 .gw-page-col {
-  flex: 0 0 280px;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.layout-gallery-wall.is-tilted .gw-page-col {
+  flex: 0 0 280px;
   transform: rotate(-4deg);
   transform-origin: top left;
 }
 
-.gw-page-col:nth-child(2) {
+.layout-gallery-wall.is-tilted .gw-page-col:nth-child(2) {
   margin-top: 14px;
 }
 
-.gw-page-col:nth-child(3) {
+.layout-gallery-wall.is-tilted .gw-page-col:nth-child(3) {
   margin-top: 28px;
 }
 
-.gw-page-col:nth-child(4) {
+.layout-gallery-wall.is-tilted .gw-page-col:nth-child(4) {
   margin-top: 42px;
 }
 
@@ -2588,8 +2879,9 @@ html, body {
 }
 
 .gw-page-frame {
+  position: relative;
   width: 100%;
-  height: 700px;
+  height: 740px;
   border-radius: 14px;
   overflow: hidden;
   border: 1px solid var(--hairline);
@@ -2633,6 +2925,10 @@ html, body {
 .layout-gallery-wall.variant-tilted-pages.orient-square .gw-page-col {
   flex: 1 1 0;
   min-width: 0;
+}
+
+.layout-gallery-wall.variant-tilted-pages.is-tilted.orient-portrait .gw-page-col,
+.layout-gallery-wall.variant-tilted-pages.is-tilted.orient-square .gw-page-col {
   transform: rotate(-2.5deg);
 }
 
@@ -2677,6 +2973,10 @@ html, body {
   border: 1px solid var(--hairline);
   background: var(--frame-bg);
   box-shadow: var(--shadow-card);
+  z-index: 4;
+}
+
+.layout-gallery-wall.is-tilted .gw-collage-slot {
   transform: rotate(-4.2deg);
 }
 
@@ -2703,68 +3003,82 @@ html, body {
 .layout-window-callout {
   display: flex;
   flex-direction: column;
-  padding: 26px 38px 24px;
-  gap: 14px;
+  padding: 34px 52px 30px;
+  gap: 16px;
+}
+
+.layout-window-callout.arrange-split.orient-landscape {
+  padding: 40px 56px 32px;
+  gap: 0;
 }
 
 .wc-header {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 8px;
   flex: none;
-  z-index: 2;
+  position: relative;
+  z-index: 6;
 }
 
 .wc-title-row {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 7px;
 }
 
 .layout-window-callout .sc-title {
-  font-size: 38px;
-  line-height: 1.08;
+  font-size: 46px;
+  line-height: 1.05;
 }
 
 .layout-window-callout .sc-title.is-cjk {
-  font-size: 34px;
+  font-size: 40px;
 }
 
 .layout-window-callout .sc-subtitle {
-  font-size: 19px;
-  max-width: 780px;
+  font-size: 17.5px;
+  max-width: 740px;
   line-height: 1.44;
 }
 
-/* Default split arrangement on landscape (16:9 / 4:3): huge left window + magnified right stack */
+/* Default split arrangement on landscape (16:9 / 4:3): left header+window + full-height right callout stack */
 .wc-split-body {
   flex: 1 1 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.56fr) 52px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.96fr) minmax(72px, 0.24fr) minmax(0, 0.98fr);
   align-items: stretch;
-  z-index: 2;
+  position: relative;
+  z-index: 4;
 }
 
-.wc-split-body .wc-main-stage {
-  flex: none;
+.wc-split-left {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  gap: 20px;
+}
+
+.wc-split-left .wc-main-stage {
+  flex: 1 1 0;
   width: 100%;
-  height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
 }
 
-.wc-split-body .wc-window-wrap {
+.wc-split-left .wc-window-wrap {
   width: 100%;
   height: 100%;
   max-width: 100%;
   max-height: 100%;
-  margin: 0 auto;
+  margin: 0;
 }
 
 .wc-gutter {
@@ -2774,46 +3088,118 @@ html, body {
 .wc-callouts-stack {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  justify-content: center;
+  gap: 30px;
   min-height: 0;
   height: 100%;
+  padding-top: 10px;
+  position: relative;
+  z-index: 8;
 }
 
-.wc-callouts-stack .wc-callout-card {
-  flex: 1 1 0;
+.wc-callouts-stack.count-4 {
+  gap: 16px;
+  padding-top: 2px;
+}
+
+.wc-callout-unit {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
+  flex: 1 1 0;
+  max-height: 258px;
 }
 
-.wc-callouts-stack .wc-callout-meta {
-  padding: 9px 14px 10px;
-  gap: 0;
+.wc-callouts-stack.count-2 .wc-callout-unit {
+  max-height: 356px;
 }
 
-.wc-callouts-stack .wc-callout-head {
-  align-items: baseline;
-  gap: 8px;
+.wc-callouts-stack.count-4 .wc-callout-unit {
+  max-height: 194px;
+}
+
+.wc-callout-behind {
+  padding: 0 8px 0 6px;
+  margin-bottom: -12px;
+}
+
+.wc-callout-num {
+  font-size: 70px;
+  line-height: 0.78;
+  letter-spacing: -0.06em;
+}
+
+.wc-callouts-stack.count-4 .wc-callout-num {
+  font-size: 56px;
+}
+
+.wc-callouts-stack.count-4 .wc-callout-behind {
+  margin-bottom: -9px;
+}
+
+.wc-callout-meta-top {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  padding-bottom: 18px;
   min-width: 0;
+  gap: 2px;
 }
 
-.wc-callouts-stack .wc-callout-title {
-  font-size: 17px;
-  white-space: nowrap;
-  flex: none;
+.wc-callouts-stack.count-4 .wc-callout-meta-top {
+  padding-bottom: 14px;
 }
 
-.wc-callout-inline-sep {
-  color: var(--sep);
+.wc-callout-sub {
+  font-family: var(--font-mono);
   font-size: 14px;
-  flex: none;
-}
-
-.wc-callout-inline-cap {
-  font-size: 15px;
-  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--meta);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
+  max-width: 100%;
+}
+
+.wc-callout-frame {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  border-radius: 14px;
+  background: var(--surface-bg);
+  box-shadow: var(--shadow-plate);
+  display: flex;
+  flex-direction: column;
+  z-index: 3;
+}
+
+.wc-callout-frame-inner {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.wc-target-dot {
+  position: absolute;
+  left: -4px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  background: var(--accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent),
+    0 0 12px color-mix(in srgb, var(--accent) 85%, transparent);
+  z-index: 12;
+  pointer-events: none;
 }
 
 .wc-main-stage {
@@ -2825,26 +3211,27 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  z-index: 2;
+  position: relative;
+  z-index: 4;
 }
 
 .wc-window-wrap {
   position: relative;
   height: 100%;
-  width: 82%;
+  width: 84%;
   max-width: 100%;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .wc-window-label {
   font-family: var(--font-mono);
   font-size: 14px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--caption-ink);
+  color: var(--meta);
   flex: none;
 }
 
@@ -2852,11 +3239,15 @@ html, body {
   position: relative;
   flex: 1;
   min-height: 0;
-  border-radius: 16px;
+  border-radius: 15px;
   overflow: hidden;
-  border: 1px solid var(--hairline);
   background: var(--frame-bg);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-hero);
+}
+
+.wc-window-frame.is-tilted {
+  transform: perspective(1800px) rotateY(4deg) rotateX(1.2deg) rotateZ(-0.5deg);
+  transform-origin: 45% 50%;
 }
 
 .wc-window-frame img {
@@ -2865,33 +3256,90 @@ html, body {
   display: block;
 }
 
+/* Focus reticles live inside the window plane for zero-drift 1:1 coordinate lock */
+.wc-reticle {
+  position: absolute;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 82%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow:
+    0 0 0 1px var(--halo-ring),
+    0 0 22px color-mix(in srgb, var(--accent) 22%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--accent) 10%, transparent);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.wc-pinpoint {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.wc-anchor-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent),
+    0 0 12px color-mix(in srgb, var(--accent) 90%, transparent);
+  pointer-events: none;
+}
+
+.wc-pinpoint .wc-anchor-dot {
+  position: static;
+}
+
 .wc-runway {
-  height: 28px;
+  height: 30px;
   flex: none;
 }
 
 .wc-callouts-grid {
-  flex: 0.90 1 0;
+  flex: 0.92 1 0;
   min-height: 0;
   display: grid;
-  gap: 18px;
-  z-index: 2;
+  gap: 20px;
+  position: relative;
+  z-index: 6;
 }
 
 .wc-callouts-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
 .wc-callouts-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
 .wc-callouts-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
 
+.wc-callouts-grid .wc-callout-unit {
+  max-height: none;
+}
+
+.wc-callouts-grid .wc-target-dot {
+  left: 50%;
+  top: -4px;
+  transform: translateX(-50%);
+}
+
 .wc-callout-card {
   position: relative;
   overflow: hidden;
   border-radius: 14px;
-  border: 1px solid var(--hairline);
   background: var(--surface-bg);
   box-shadow: var(--shadow-plate);
   display: flex;
   flex-direction: column;
   min-height: 0;
+  flex: 1 1 0;
+  z-index: 3;
 }
 
 .wc-callout-media {
@@ -2909,12 +3357,12 @@ html, body {
 }
 
 .wc-callout-meta {
-  padding: 10px 14px 11px;
+  padding: 12px 16px 13px;
   border-top: 1px solid var(--hairline);
   background: var(--surface-bg);
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   flex: none;
 }
 
@@ -2928,7 +3376,8 @@ html, body {
   font-size: 17px;
   font-weight: 600;
   color: var(--ink);
-  line-height: 1.28;
+  line-height: 1.24;
+  letter-spacing: -0.015em;
 }
 
 .wc-callout-tag {
@@ -2956,14 +3405,14 @@ html, body {
   background: var(--accent);
   color: var(--accent-ink);
   border: 2.5px solid var(--halo-ring);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.40);
   font-family: var(--font-mono);
   font-size: 14px;
   font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 6;
+  z-index: 8;
 }
 
 .layout-window-callout.orient-portrait,
@@ -3041,7 +3490,7 @@ html, body {
   border-top: none;
   border-left: 1px solid var(--hairline);
   justify-content: center;
-  padding: 16px 20px;
+  padding: 16px 22px;
   gap: 6px;
 }
 
@@ -3058,11 +3507,21 @@ html, body {
   line-height: 1.48;
 }
 
+.wc-row-num {
+  font-family: var(--font-sans);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  color: color-mix(in srgb, var(--accent) 68%, transparent);
+  margin-bottom: 2px;
+}
+
 /* ---------- 7. before-after ---------- */
 .layout-before-after {
   display: flex;
   flex-direction: column;
-  padding: 28px 38px 28px;
+  padding: 40px 58px 34px;
   gap: 18px;
 }
 
@@ -3072,18 +3531,20 @@ html, body {
   align-items: flex-start;
   gap: 8px;
   flex: none;
+  position: relative;
+  z-index: 6;
 }
 
 .ba-title-row {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 7px;
 }
 
 .layout-before-after .sc-title {
-  font-size: 46px;
-  line-height: 1.1;
+  font-size: 48px;
+  line-height: 1.05;
 }
 
 .layout-before-after .sc-title.is-cjk {
@@ -3091,70 +3552,72 @@ html, body {
 }
 
 .layout-before-after .sc-subtitle {
-  font-size: 19.5px;
-  max-width: 780px;
+  font-size: 17.5px;
+  max-width: 760px;
 }
 
+/* Asymmetric upright side-by-side: recessed BEFORE vs dominant forward-stepping AFTER */
 .ba-stage {
   position: relative;
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 34px;
+  grid-template-columns: minmax(0, 0.84fr) 76px minmax(0, 1.08fr);
+  align-items: stretch;
+  z-index: 4;
 }
 
 .ba-pane {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 11px;
   min-height: 0;
+  min-width: 0;
 }
 
-.ba-label-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
+.layout-before-after.ba-orient-side-by-side .ba-pane.is-before {
+  padding-top: 62px;
+  z-index: 5;
 }
 
-.ba-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: var(--pill-bg);
-  border: 1px solid var(--pill-border);
-  font-family: var(--font-mono);
-  font-size: 14.5px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--caption-ink);
+.layout-before-after.ba-orient-side-by-side .ba-pane.is-after {
+  padding-top: 0;
+  z-index: 7;
 }
 
-.ba-pane.is-after .ba-pill {
-  color: var(--ink);
-  border-color: color-mix(in srgb, var(--accent) 44%, var(--pill-border));
+.layout-before-after.ba-orient-side-by-side.is-tilted .ba-pane.is-before {
+  transform: perspective(2200px) rotateY(3.2deg) rotateX(1.1deg) rotateZ(-1.4deg) scale(0.96);
+  transform-origin: 50% 54%;
+}
+
+.layout-before-after.ba-orient-side-by-side.is-tilted .ba-pane.is-after {
+  transform: perspective(2200px) rotateY(-2.6deg) rotateX(0.9deg) rotateZ(0.8deg) scale(1.02);
+  transform-origin: 50% 52%;
 }
 
 .ba-frame {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
   position: relative;
   overflow: hidden;
-  border-radius: 16px;
-  border: 1px solid var(--hairline);
+  border-radius: 17px;
   background: var(--frame-bg);
   box-shadow: var(--shadow-card);
+  z-index: 3;
 }
 
 .ba-pane.is-after .ba-frame {
-  border: 1.5px solid color-mix(in srgb, var(--accent) 52%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent),
-    var(--shadow-card);
+    var(--shadow-hero),
+    0 24px 62px color-mix(in srgb, var(--accent) 22%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+.ba-pane.is-after .ba-frame::after {
+  box-shadow:
+    inset 0 1.5px 0 color-mix(in srgb, var(--accent) 52%, #ffffff),
+    inset 1.2px 0 0 color-mix(in srgb, var(--accent) 24%, var(--rim-left)),
+    inset 0 -1px 0 var(--rim-bottom);
 }
 
 .ba-frame img {
@@ -3164,36 +3627,67 @@ html, body {
 }
 
 .ba-caption {
-  font-size: 16px;
-  line-height: 1.45;
+  font-size: 15.5px;
+  line-height: 1.44;
   color: var(--muted);
+  margin-top: 12px;
   flex: none;
 }
 
-.ba-bridge {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 46px;
-  height: 46px;
-  border-radius: 999px;
-  background: var(--bridge-bg);
-  border: 1px solid var(--bridge-border);
-  box-shadow: var(--shadow-plate);
+/* Minimal floating directional light arrow — zero circle, zero pill */
+.ba-arrow-bridge {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 8px;
+  align-self: center;
+  margin-top: 32px;
   color: var(--accent);
-  z-index: 6;
+  z-index: 9;
+  pointer-events: none;
 }
 
-.ba-bridge.has-delta {
-  width: auto;
-  height: 44px;
-  padding: 0 16px;
-  gap: 8px;
-  border-color: color-mix(in srgb, var(--accent) 44%, var(--bridge-border));
+.ba-arrow-bridge svg {
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--accent) 36%, transparent));
+}
+
+.ba-delta-inline {
+  font-family: var(--font-mono);
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  white-space: nowrap;
+  text-shadow: 0 0 22px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* Stacked before-after (timelines, waveforms & portrait) */
+.layout-before-after.ba-orient-stacked .ba-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0;
+}
+
+.ba-stacked-plane {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.layout-before-after.ba-orient-stacked.orient-landscape.is-tilted .ba-stacked-plane {
+  transform: perspective(2350px) rotateX(2.8deg) rotateY(-3.0deg) rotateZ(-1.0deg);
+  transform-origin: 48% 52%;
+}
+
+.layout-before-after.ba-orient-stacked .ba-pane {
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .ba-divider-row {
@@ -3202,7 +3696,8 @@ html, body {
   justify-content: center;
   gap: 14px;
   flex: none;
-  margin: -2px 0;
+  margin: -4px 0;
+  color: var(--accent);
 }
 
 .ba-divider-row::before,
@@ -3213,70 +3708,93 @@ html, body {
   background: var(--hairline);
 }
 
-.ba-bridge.is-inline {
-  position: static;
-  transform: none;
-  width: 38px;
-  height: 38px;
-  flex: none;
-}
-
-.ba-bridge.is-inline.has-delta {
-  width: auto;
-  height: 38px;
-  padding: 0 16px;
-  gap: 8px;
-}
-
-.ba-delta-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 14.5px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--accent);
-  white-space: nowrap;
-}
-
 .ba-after-track {
-  flex: 1;
+  position: relative;
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   align-items: stretch;
-  gap: 16px;
+  gap: 0;
 }
 
 .ba-after-track .ba-frame {
   flex: none;
 }
 
-.ba-ghost-zone {
-  flex: 1;
+/* Optical trim hairline & monumental borderless delta display in reclaimed right-hand void */
+.ba-reclaimed-zone {
+  position: relative;
+  flex: 1 1 0;
   min-width: 0;
-  border-radius: 16px;
-  border: 1.5px dashed color-mix(in srgb, var(--accent) 46%, var(--hairline));
-  background: repeating-linear-gradient(
-    -45deg,
-    color-mix(in srgb, var(--accent) 6%, transparent) 0 10px,
-    transparent 10px 20px
-  );
+  margin-left: 14px;
+  padding: 18px 24px 18px 28px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 16px 20px;
-  text-align: center;
+  gap: 6px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 18%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 6%, transparent) 44%,
+    transparent 96%
+  );
+  border-radius: 0 16px 16px 0;
 }
 
-.ba-ghost-zone .ba-delta-badge {
-  padding: 7px 14px;
-  border-radius: 999px;
-  background: var(--bridge-bg);
-  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--bridge-border));
-  box-shadow: var(--shadow-plate);
-  font-size: 15px;
+.ba-trim-hairline {
+  position: absolute;
+  left: 0;
+  top: 6%;
+  bottom: 6%;
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 95%, #ffffff) 20%,
+    var(--accent) 50%,
+    color-mix(in srgb, var(--accent) 95%, #ffffff) 80%,
+    transparent 100%
+  );
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--accent) 85%, transparent),
+    0 0 6px color-mix(in srgb, var(--accent) 90%, #ffffff);
+}
+
+.ba-plane-hairline {
+  position: absolute;
+  top: 46%;
+  height: 62px;
+  width: 1.5px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 16%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 84%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 26%, transparent) 100%
+  );
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 52%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.ba-delta-hero {
+  font-family: var(--font-sans);
+  font-size: 46px;
+  font-weight: 600;
+  line-height: 0.94;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  text-shadow: 0 0 34px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+.ba-delta-sub {
+  font-family: var(--font-mono);
+  font-size: 14.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--caption-ink);
 }
 
 .ba-bottom-bar {
@@ -3285,28 +3803,20 @@ html, body {
   justify-content: space-between;
   gap: 16px;
   flex: none;
+  position: relative;
+  z-index: 6;
 }
 
 .ba-note {
   font-family: var(--font-mono);
-  font-size: 14.5px;
-  color: var(--caption-ink);
-}
-
-.layout-before-after.ba-orient-stacked .ba-stage {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.layout-before-after.ba-orient-stacked .ba-pane {
-  flex: 1 1 0;
-  min-height: 0;
-  gap: 9px;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--meta);
 }
 
 .layout-before-after.orient-portrait {
-  padding: 40px 44px 36px;
+  padding: 44px 48px 38px;
   gap: 20px;
 }
 
@@ -3316,17 +3826,24 @@ html, body {
   gap: 8px;
 }
 
-.layout-before-after.orient-portrait.ba-orient-stacked .ba-stage {
-  gap: 18px;
+.layout-before-after.orient-portrait.ba-orient-stacked .ba-stacked-plane {
+  gap: 22px;
 }
 
 /* Uniform padded stage when fit: "contain" is used on media slots */
 .ws-step-media.is-contain,
 .mb-card-media.is-contain,
 .ba-frame.is-contain,
-.lb-tile.is-contain,
-.wc-callout-media.is-contain {
+.lb-tile.is-contain {
   padding: 18px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wc-callout-media.is-contain {
+  padding: 12px 14px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -3336,8 +3853,7 @@ html, body {
 .ws-step-media.is-contain img,
 .mb-card-media.is-contain img,
 .ba-frame.is-contain img,
-.lb-tile.is-contain img,
-.wc-callout-media.is-contain img {
+.lb-tile.is-contain img {
   width: auto;
   height: auto;
   max-width: 100%;
@@ -3348,11 +3864,16 @@ html, body {
     0 2px 6px rgba(0, 0, 0, 0.10);
 }
 
+.wc-callout-media.is-contain img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .theme-dark-studio .ws-step-media.is-contain img,
 .theme-dark-studio .mb-card-media.is-contain img,
 .theme-dark-studio .ba-frame.is-contain img,
-.theme-dark-studio .lb-tile.is-contain img,
-.theme-dark-studio .wc-callout-media.is-contain img {
+.theme-dark-studio .lb-tile.is-contain img {
   box-shadow:
     0 14px 30px -10px rgba(0, 0, 0, 0.58),
     0 0 0 1px rgba(255, 255, 255, 0.08);
@@ -3362,7 +3883,7 @@ html, body {
 .layout-workflow-steps {
   display: flex;
   flex-direction: column;
-  padding: 28px 38px 28px;
+  padding: 32px 44px 30px;
   gap: 18px;
 }
 
@@ -3372,6 +3893,8 @@ html, body {
   align-items: flex-start;
   gap: 8px;
   flex: none;
+  position: relative;
+  z-index: 6;
 }
 
 .ws-title-row {
@@ -3383,7 +3906,7 @@ html, body {
 
 .layout-workflow-steps .sc-title {
   font-size: 46px;
-  line-height: 1.1;
+  line-height: 1.08;
 }
 
 .layout-workflow-steps .sc-title.is-cjk {
@@ -3391,29 +3914,52 @@ html, body {
 }
 
 .layout-workflow-steps .sc-subtitle {
-  font-size: 19.5px;
+  font-size: 18.5px;
   max-width: 780px;
 }
 
 .ws-flow {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   align-items: stretch;
   gap: 0;
+  position: relative;
+  z-index: 4;
+}
+
+.ws-step-unit {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.ws-step-behind {
+  padding: 0 8px 0 8px;
+  margin-bottom: -11px;
+}
+
+.ws-step-num {
+  font-size: 62px;
+  line-height: 0.78;
+  letter-spacing: -0.06em;
 }
 
 .ws-step-card {
+  position: relative;
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   border-radius: 16px;
-  border: 1px solid var(--hairline);
   background: var(--surface-bg);
   box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
+  z-index: 3;
 }
 
 .ws-step-media {
@@ -3447,26 +3993,223 @@ html, body {
 }
 
 .ws-step-title {
-  font-size: 18.5px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--ink);
   line-height: 1.28;
+  letter-spacing: -0.015em;
 }
 
 .ws-step-caption {
-  font-size: 15.5px;
-  line-height: 1.46;
+  font-size: 15px;
+  line-height: 1.44;
   color: var(--muted);
 }
 
 .ws-arrow {
-  width: 30px;
+  width: 34px;
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding-top: 34px;
   color: var(--accent);
-  opacity: 0.72;
+  opacity: 0.78;
+}
+
+/* Staged workflow-steps (asymmetric editorial left column + floating 3D planes + occluded numerals) */
+.layout-workflow-steps.ws-style-staged.orient-landscape {
+  padding: 0;
+  gap: 0;
+  display: block;
+}
+
+.ws-staged-left {
+  position: absolute;
+  left: 60px;
+  top: 56px;
+  bottom: 52px;
+  width: 420px;
+  display: flex;
+  flex-direction: column;
+  z-index: 15;
+}
+
+.ws-staged-left .sc-title {
+  margin-top: 36px;
+  font-size: 52px;
+  line-height: 1.04;
+}
+
+.ws-staged-left .sc-title.is-cjk {
+  font-size: 46px;
+}
+
+.ws-staged-left .sc-subtitle {
+  margin-top: 16px;
+  font-size: 17px;
+  line-height: 1.52;
+  max-width: 396px;
+}
+
+.ws-milestones {
+  margin-top: 36px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--hairline);
+}
+
+.ws-milestone {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  align-items: start;
+  gap: 8px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.ws-milestone-idx {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent);
+  padding-top: 2px;
+}
+
+.ws-milestone-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.28;
+}
+
+.ws-milestone-caption {
+  margin-top: 4px;
+  font-size: 14.5px;
+  color: var(--muted);
+  line-height: 1.42;
+}
+
+.ws-staged-left .sc-footer {
+  margin-top: auto;
+}
+
+.ws-staged-arena {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+}
+
+.ws-stage-num {
+  position: absolute;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 98px;
+  line-height: 0.80;
+  letter-spacing: -0.065em;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  pointer-events: none;
+}
+
+.ws-stage-plane {
+  position: absolute;
+  border-radius: 17px;
+  overflow: hidden;
+  background: var(--frame-bg);
+  box-shadow: var(--shadow-hero);
+}
+
+.ws-stage-plane img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.ws-stage-hero {
+  left: 59%;
+  top: 9%;
+  width: 45%;
+  height: 98%;
+  border-radius: 22px;
+  z-index: 4;
+}
+
+.ws-stage-num-hero {
+  left: 63.5%;
+  top: 2.5%;
+  color: var(--occluded-ink);
+  z-index: 3;
+}
+
+.ws-stage-fg-0 {
+  left: 32.5%;
+  top: 11.5%;
+  width: 30.5%;
+  height: 45%;
+  z-index: 7;
+}
+
+.ws-stage-num-0 {
+  left: 33%;
+  top: 4.5%;
+  color: var(--occluded-ink);
+  z-index: 6;
+}
+
+.ws-stage-fg-1 {
+  left: 35.5%;
+  top: 63%;
+  width: 34.5%;
+  height: 29%;
+  z-index: 10;
+}
+
+.ws-stage-num-1 {
+  left: 36%;
+  top: 56%;
+  color: color-mix(in srgb, var(--accent) var(--occluded-accent-mix), transparent);
+  text-shadow: 0 0 36px color-mix(in srgb, var(--accent) 28%, transparent);
+  z-index: 9;
+}
+
+.ws-stage-fg-2 {
+  left: 44%;
+  top: 39%;
+  width: 28%;
+  height: 28%;
+  z-index: 8;
+}
+
+.ws-stage-num-2 {
+  left: 44.5%;
+  top: 32%;
+  color: var(--occluded-ink);
+  z-index: 7;
+}
+
+.ws-style-staged.is-tilted .ws-stage-hero,
+.ws-style-staged.is-tilted .ws-stage-num-hero {
+  transform: perspective(2100px) rotateY(-8.2deg) rotateX(2.2deg) rotateZ(-1.8deg);
+  transform-origin: 40% 45%;
+}
+
+.ws-style-staged.is-tilted .ws-stage-fg-0,
+.ws-style-staged.is-tilted .ws-stage-num-0 {
+  transform: perspective(2100px) rotateY(-5.6deg) rotateX(1.8deg) rotateZ(-1.3deg);
+  transform-origin: 50% 50%;
+}
+
+.ws-style-staged.is-tilted .ws-stage-fg-1,
+.ws-style-staged.is-tilted .ws-stage-num-1 {
+  transform: perspective(2100px) rotateY(-4.2deg) rotateX(1.5deg) rotateZ(-0.9deg);
+  transform-origin: 50% 50%;
+}
+
+.ws-style-staged.is-tilted .ws-stage-fg-2,
+.ws-style-staged.is-tilted .ws-stage-num-2 {
+  transform: perspective(2100px) rotateY(-5.0deg) rotateX(1.6deg) rotateZ(-1.1deg);
+  transform-origin: 50% 50%;
 }
 
 .layout-workflow-steps.orient-portrait,
@@ -3515,6 +4258,7 @@ html, body {
 .layout-workflow-steps.orient-portrait .ws-flow.is-vertical .ws-arrow {
   width: 100%;
   height: 24px;
+  padding-top: 0;
 }
 
 .layout-workflow-steps .ws-flow.is-grid {
@@ -3644,23 +4388,110 @@ window.__positionShowcaseConnectors = function () {
   const cRect = canvas.getBoundingClientRect();
   const cs = getComputedStyle(canvas);
   const accent = cs.getPropertyValue('--accent').trim() || '#1b1c19';
-  const connOpacity = cs.getPropertyValue('--connector-opacity').trim() || '0.50';
-  const haloRing = cs.getPropertyValue('--halo-ring').trim() || 'rgba(255,255,255,0.9)';
+  const connOpacity = cs.getPropertyValue('--connector-opacity').trim() || '0.78';
   const ns = 'http://www.w3.org/2000/svg';
+  let connLayer = null;
+
   if (svg) {
     svg.setAttribute('viewBox', `0 0 ${cRect.width} ${cRect.height}`);
     svg.innerHTML = '';
+    const defs = document.createElementNS(ns, 'defs');
+    const flt = document.createElementNS(ns, 'filter');
+    flt.setAttribute('id', 'sc-conn-glow');
+    flt.setAttribute('x', '-20%');
+    flt.setAttribute('y', '-20%');
+    flt.setAttribute('width', '140%');
+    flt.setAttribute('height', '140%');
+    const blur = document.createElementNS(ns, 'feGaussianBlur');
+    blur.setAttribute('stdDeviation', '2.8');
+    blur.setAttribute('result', 'blur');
+    const merge = document.createElementNS(ns, 'feMerge');
+    const n1 = document.createElementNS(ns, 'feMergeNode');
+    n1.setAttribute('in', 'blur');
+    const n2 = document.createElementNS(ns, 'feMergeNode');
+    n2.setAttribute('in', 'SourceGraphic');
+    merge.appendChild(n1);
+    merge.appendChild(n2);
+    flt.appendChild(blur);
+    flt.appendChild(merge);
+    defs.appendChild(flt);
+    svg.appendChild(defs);
+    connLayer = document.createElementNS(ns, 'g');
+    connLayer.setAttribute('filter', 'url(#sc-conn-glow)');
+    svg.appendChild(connLayer);
   }
 
   function appendDot(cx, cy, r, fill, opacity) {
-    if (!svg) return;
+    if (!connLayer) return;
     const circle = document.createElementNS(ns, 'circle');
     circle.setAttribute('cx', cx.toFixed(1));
     circle.setAttribute('cy', cy.toFixed(1));
     circle.setAttribute('r', String(r));
     circle.setAttribute('fill', fill);
     if (opacity !== undefined) circle.setAttribute('fill-opacity', String(opacity));
-    svg.appendChild(circle);
+    connLayer.appendChild(circle);
+  }
+
+  function appendBeamPath(d, dash) {
+    if (!connLayer) return;
+    const halo = document.createElementNS(ns, 'path');
+    halo.setAttribute('d', d);
+    halo.setAttribute('fill', 'none');
+    halo.setAttribute('stroke', accent);
+    halo.setAttribute('stroke-opacity', '0.20');
+    halo.setAttribute('stroke-width', '4.2');
+    halo.setAttribute('stroke-linecap', 'round');
+    connLayer.appendChild(halo);
+
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', accent);
+    path.setAttribute('stroke-opacity', connOpacity);
+    path.setAttribute('stroke-width', '1.65');
+    path.setAttribute('stroke-dasharray', dash || '6 5');
+    path.setAttribute('stroke-linecap', 'round');
+    connLayer.appendChild(path);
+  }
+
+  function getRenderedImageRect(imgEl, containerEl) {
+    const w = containerEl ? containerEl.clientWidth : imgEl.clientWidth;
+    const h = containerEl ? containerEl.clientHeight : imgEl.clientHeight;
+    if (!imgEl.naturalWidth || !imgEl.naturalHeight || !w || !h) {
+      return { left: 0, top: 0, width: w, height: h };
+    }
+    const style = getComputedStyle(imgEl);
+    if (style.objectFit !== 'contain') {
+      return { left: 0, top: 0, width: w, height: h };
+    }
+    const scale = Math.min(w / imgEl.naturalWidth, h / imgEl.naturalHeight);
+    const rw = imgEl.naturalWidth * scale;
+    const rh = imgEl.naturalHeight * scale;
+    const tokens = (style.objectPosition || '50% 50%').trim().split(/\s+/);
+    function parsePos(tok, fallback) {
+      if (!tok) return fallback;
+      if (tok === 'left' || tok === 'top') return 0;
+      if (tok === 'right' || tok === 'bottom') return 1;
+      if (tok === 'center') return 0.5;
+      if (tok.endsWith('%')) return parseFloat(tok) / 100;
+      return fallback;
+    }
+    const px = parsePos(tokens[0], 0.5);
+    const py = parsePos(tokens[1] || tokens[0], 0.5);
+    return {
+      left: (w - rw) * px,
+      top: (h - rh) * py,
+      width: rw,
+      height: rh,
+    };
+  }
+
+  function centerInCanvas(el) {
+    const r = el.getBoundingClientRect();
+    return {
+      x: r.left - cRect.left + r.width / 2,
+      y: r.top - cRect.top + r.height / 2,
+    };
   }
 
   // 1. section-assembly connectors (middle plates -> right showcase)
@@ -3677,30 +4508,22 @@ window.__positionShowcaseConnectors = function () {
       const y2 = (sRect.top - cRect.top) + sRect.height * (targetPct / 100);
       if (x2 <= x1 + 12) return;
 
-      const path = document.createElementNS(ns, 'path');
+      let d;
       if (Math.abs(y2 - y1) < 36) {
-        path.setAttribute('d', `M ${x1.toFixed(1)} ${y1.toFixed(1)} L ${x2.toFixed(1)} ${y1.toFixed(1)}`);
+        d = `M ${x1.toFixed(1)} ${y1.toFixed(1)} L ${x2.toFixed(1)} ${y1.toFixed(1)}`;
         appendDot(x1, y1, 4, accent);
         appendDot(x2, y1, 4, accent);
       } else {
         const midX = (x1 + x2) / 2;
-        path.setAttribute(
-          'd',
-          `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${midX.toFixed(1)} ${y1.toFixed(1)}, ${midX.toFixed(1)} ${y2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`
-        );
+        d = `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${midX.toFixed(1)} ${y1.toFixed(1)}, ${midX.toFixed(1)} ${y2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
         appendDot(x1, y1, 4, accent);
         appendDot(x2, y2, 4, accent);
       }
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', accent);
-      path.setAttribute('stroke-opacity', connOpacity);
-      path.setAttribute('stroke-width', '1.5');
-      path.setAttribute('stroke-dasharray', '4 4');
-      svg.appendChild(path);
+      appendBeamPath(d, '4 4');
     });
   }
 
-  // 2. window-callout sizing, image-relative coordinates, connectors & portrait pins
+  // 2. window-callout sizing, in-plane reticles, zero-drift connectors & portrait pins
   const mainWindow = document.querySelector('.wc-window-frame');
   const mainWrap = document.querySelector('.wc-window-wrap');
   const mainStage = document.querySelector('.wc-main-stage');
@@ -3715,7 +4538,7 @@ window.__positionShowcaseConnectors = function () {
       if (isSplit && mainWrap && mainStage) {
         const stageRect = mainStage.getBoundingClientRect();
         const labelEl = mainWrap.querySelector('.wc-window-label');
-        const labelH = labelEl ? (labelEl.getBoundingClientRect().height + 6) : 0;
+        const labelH = labelEl ? (labelEl.getBoundingClientRect().height + 8) : 0;
         const availW = Math.floor(stageRect.width);
         const availH = Math.max(180, Math.floor(stageRect.height - labelH));
         if (availW > 120 && availH > 120) {
@@ -3727,9 +4550,9 @@ window.__positionShowcaseConnectors = function () {
         }
       } else if (canvas.classList.contains('orient-landscape') && mainWrap && mainStage) {
         const stageRect = mainStage.getBoundingClientRect();
-        const frameRect = mainWindow.getBoundingClientRect();
-        if (frameRect.height > 20 && stageRect.width > 100) {
-          const idealW = Math.round(frameRect.height * natRatio);
+        const frameH = mainWindow.clientHeight;
+        if (frameH > 20 && stageRect.width > 100) {
+          const idealW = Math.round(frameH * natRatio);
           const clampedW = Math.min(Math.floor(stageRect.width), Math.max(260, idealW));
           mainWrap.style.width = `${clampedW}px`;
         }
@@ -3739,123 +4562,101 @@ window.__positionShowcaseConnectors = function () {
       }
     }
 
-    function getRenderedImageRect(imgEl) {
-      const r = imgEl.getBoundingClientRect();
-      if (!imgEl.naturalWidth || !imgEl.naturalHeight) return r;
-      const style = getComputedStyle(imgEl);
-      if (style.objectFit !== 'contain') return r;
-      const scale = Math.min(r.width / imgEl.naturalWidth, r.height / imgEl.naturalHeight);
-      const rw = imgEl.naturalWidth * scale;
-      const rh = imgEl.naturalHeight * scale;
-      const tokens = (style.objectPosition || '50% 50%').trim().split(/\s+/);
-      function parsePos(tok, fallback) {
-        if (!tok) return fallback;
-        if (tok === 'left' || tok === 'top') return 0;
-        if (tok === 'right' || tok === 'bottom') return 1;
-        if (tok === 'center') return 0.5;
-        if (tok.endsWith('%')) return parseFloat(tok) / 100;
-        return fallback;
-      }
-      const px = parsePos(tokens[0], 0.5);
-      const py = parsePos(tokens[1] || tokens[0], 0.5);
-      return {
-        left: r.left + (r.width - rw) * px,
-        top: r.top + (r.height - rh) * py,
-        width: rw,
-        height: rh,
-      };
-    }
-
-    const imgRect = winImg ? getRenderedImageRect(winImg) : mainWindow.getBoundingClientRect();
+    const localImgRect = winImg
+      ? getRenderedImageRect(winImg, mainWindow)
+      : { left: 0, top: 0, width: mainWindow.clientWidth, height: mainWindow.clientHeight };
 
     if (canvas.classList.contains('orient-landscape') && svg) {
-      const callouts = document.querySelectorAll('.wc-callout-card[data-target-x][data-target-y]');
-      callouts.forEach((card) => {
-        const kRect = card.getBoundingClientRect();
-        const txPct = parseFloat(card.getAttribute('data-target-x') || '50');
-        const tyPct = parseFloat(card.getAttribute('data-target-y') || '50');
-        const twAttr = card.getAttribute('data-target-w');
-        const thAttr = card.getAttribute('data-target-h');
-        const x2 = (imgRect.left - cRect.left) + imgRect.width * (txPct / 100);
-        const y2 = (imgRect.top - cRect.top) + imgRect.height * (tyPct / 100);
+      const units = document.querySelectorAll('.wc-callout-unit[data-callout-idx]');
+      // Pass 1: position every in-plane reticle/pinpoint in exact un-transformed local frame coords
+      units.forEach((unit) => {
+        const idx = unit.getAttribute('data-callout-idx');
+        const marker = mainWindow.querySelector(`[data-marker-idx="${idx}"]`);
+        const dstDot = unit.querySelector('.wc-target-dot');
+        if (!marker || !dstDot) return;
 
-        // Optional subtle focus reticle box around target region
-        let endX = x2;
-        let endY = y2;
-        const hasReticle = Boolean(twAttr && thAttr);
-        if (hasReticle) {
-          const rw = imgRect.width * (parseFloat(twAttr) / 100);
-          const rh = imgRect.height * (parseFloat(thAttr) / 100);
-          const rectEl = document.createElementNS(ns, 'rect');
-          rectEl.setAttribute('x', (x2 - rw / 2).toFixed(1));
-          rectEl.setAttribute('y', (y2 - rh / 2).toFixed(1));
-          rectEl.setAttribute('width', rw.toFixed(1));
-          rectEl.setAttribute('height', rh.toFixed(1));
-          rectEl.setAttribute('rx', '6');
-          rectEl.setAttribute('fill', accent);
-          rectEl.setAttribute('fill-opacity', '0.09');
-          rectEl.setAttribute('stroke', accent);
-          rectEl.setAttribute('stroke-opacity', '0.72');
-          rectEl.setAttribute('stroke-width', '1.6');
-          svg.appendChild(rectEl);
-          if (isSplit) {
-            endX = x2 + rw / 2;
-          } else {
-            endY = y2 + rh / 2;
+        const txPct = parseFloat(unit.getAttribute('data-target-x') || '50');
+        const tyPct = parseFloat(unit.getAttribute('data-target-y') || '50');
+        const twAttr = unit.getAttribute('data-target-w');
+        const thAttr = unit.getAttribute('data-target-h');
+        const cx = localImgRect.left + localImgRect.width * (txPct / 100);
+        const cy = localImgRect.top + localImgRect.height * (tyPct / 100);
+        const anchor = marker.querySelector('.wc-anchor-dot');
+
+        if (twAttr && thAttr) {
+          const rw = localImgRect.width * (parseFloat(twAttr) / 100);
+          const rh = localImgRect.height * (parseFloat(thAttr) / 100);
+          marker.style.left = `${(cx - rw / 2).toFixed(1)}px`;
+          marker.style.top = `${(cy - rh / 2).toFixed(1)}px`;
+          marker.style.width = `${rw.toFixed(1)}px`;
+          marker.style.height = `${rh.toFixed(1)}px`;
+          if (anchor) {
+            const dstPos = centerInCanvas(dstDot);
+            const winTopInCanvas = mainWindow.getBoundingClientRect().top - cRect.top;
+            const overTop = isSplit && txPct < 24 && tyPct < 28 && dstPos.y < (winTopInCanvas + cy - 16);
+            if (overTop) {
+              anchor.style.right = '2px';
+              anchor.style.top = '-4px';
+              anchor.style.left = '';
+              anchor.style.bottom = '';
+              anchor.style.transform = '';
+              marker.setAttribute('data-route', 'over-top');
+            } else if (isSplit) {
+              anchor.style.right = '-4px';
+              anchor.style.top = '50%';
+              anchor.style.left = '';
+              anchor.style.bottom = '';
+              anchor.style.transform = 'translateY(-50%)';
+              marker.setAttribute('data-route', 'right');
+            } else {
+              anchor.style.left = '50%';
+              anchor.style.bottom = '-4px';
+              anchor.style.right = '';
+              anchor.style.top = '';
+              anchor.style.transform = 'translateX(-50%)';
+              marker.setAttribute('data-route', 'down');
+            }
           }
-        }
-
-        const path = document.createElementNS(ns, 'path');
-        let x1, y1;
-        if (isSplit) {
-          x1 = kRect.left - cRect.left - 8;
-          y1 = (kRect.top + kRect.bottom) / 2 - cRect.top;
-          const spanX = Math.max(48, x1 - endX);
-          const pull1 = Math.max(46, Math.min(185, spanX * 0.44));
-          const pull2 = Math.max(46, Math.min(185, spanX * 0.40));
-          path.setAttribute(
-            'd',
-            `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${(x1 - pull1).toFixed(1)} ${y1.toFixed(1)}, ${(endX + pull2).toFixed(1)} ${endY.toFixed(1)}, ${endX.toFixed(1)} ${endY.toFixed(1)}`
-          );
         } else {
-          x1 = (kRect.left + kRect.right) / 2 - cRect.left;
-          y1 = kRect.top - cRect.top - 6;
-          const spanY = Math.max(40, y1 - endY);
-          const lift1 = Math.max(58, Math.min(135, spanY * 0.48));
-          const lift2 = Math.max(46, Math.min(150, spanY * 0.44));
-          path.setAttribute(
-            'd',
-            `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${x1.toFixed(1)} ${(y1 - lift1).toFixed(1)}, ${endX.toFixed(1)} ${(endY + lift2).toFixed(1)}, ${endX.toFixed(1)} ${endY.toFixed(1)}`
-          );
+          marker.style.left = `${cx.toFixed(1)}px`;
+          marker.style.top = `${cy.toFixed(1)}px`;
+          marker.setAttribute('data-route', isSplit ? 'right' : 'down');
         }
-        path.setAttribute('fill', 'none');
-        path.setAttribute('stroke', accent);
-        path.setAttribute('stroke-opacity', connOpacity);
-        path.setAttribute('stroke-width', '1.6');
-        path.setAttribute('stroke-dasharray', '4 4');
-        svg.appendChild(path);
+      });
 
-        // Start anchor dot at callout edge
-        appendDot(x1, y1, 3.6, accent);
-        // Target beacon: compact edge dot on focus reticle, or double-ring beacon when pinpoint
-        if (hasReticle) {
-          appendDot(endX, endY, 5.5, haloRing);
-          appendDot(endX, endY, 3.6, accent);
+      // Pass 2: measure exact post-layout (and post-3D-transform if tilted!) screen coordinates
+      units.forEach((unit) => {
+        const idx = unit.getAttribute('data-callout-idx');
+        const marker = mainWindow.querySelector(`[data-marker-idx="${idx}"]`);
+        const dstDot = unit.querySelector('.wc-target-dot');
+        if (!marker || !dstDot) return;
+        const anchor = marker.querySelector('.wc-anchor-dot') || marker;
+        const pA = centerInCanvas(anchor);
+        const pB = centerInCanvas(dstDot);
+        const route = marker.getAttribute('data-route') || (isSplit ? 'right' : 'down');
+
+        let d;
+        if (isSplit && route === 'over-top') {
+          d = `M ${pA.x.toFixed(1)} ${pA.y.toFixed(1)} C ${pA.x.toFixed(1)} ${(pB.y + 2).toFixed(1)}, ${(pA.x + 110).toFixed(1)} ${pB.y.toFixed(1)}, ${pB.x.toFixed(1)} ${pB.y.toFixed(1)}`;
+        } else if (isSplit) {
+          const spanX = Math.max(48, pB.x - pA.x);
+          const pull = Math.max(44, Math.min(210, spanX * 0.46));
+          d = `M ${pA.x.toFixed(1)} ${pA.y.toFixed(1)} C ${(pA.x + pull).toFixed(1)} ${pA.y.toFixed(1)}, ${(pB.x - pull).toFixed(1)} ${pB.y.toFixed(1)}, ${pB.x.toFixed(1)} ${pB.y.toFixed(1)}`;
         } else {
-          appendDot(endX, endY, 11, accent, 0.24);
-          appendDot(endX, endY, 6.2, haloRing);
-          appendDot(endX, endY, 3.8, accent);
+          const spanY = Math.max(40, pB.y - pA.y);
+          const lift = Math.max(46, Math.min(150, spanY * 0.46));
+          d = `M ${pA.x.toFixed(1)} ${pA.y.toFixed(1)} C ${pA.x.toFixed(1)} ${(pA.y + lift).toFixed(1)}, ${pB.x.toFixed(1)} ${(pB.y - lift).toFixed(1)}, ${pB.x.toFixed(1)} ${pB.y.toFixed(1)}`;
         }
+        appendBeamPath(d, '6 5');
       });
     } else {
       // Portrait / square: position numbered pin markers relative to rendered image content rect
-      const frameRect = mainWindow.getBoundingClientRect();
       const pins = mainWindow.querySelectorAll('.wc-pin-marker[data-target-x][data-target-y]');
       pins.forEach((pin) => {
         const txPct = parseFloat(pin.getAttribute('data-target-x') || '50');
         const tyPct = parseFloat(pin.getAttribute('data-target-y') || '50');
-        const localX = (imgRect.left - frameRect.left) + imgRect.width * (txPct / 100);
-        const localY = (imgRect.top - frameRect.top) + imgRect.height * (tyPct / 100);
+        const localX = localImgRect.left + localImgRect.width * (txPct / 100);
+        const localY = localImgRect.top + localImgRect.height * (tyPct / 100);
         pin.style.left = `${localX.toFixed(1)}px`;
         pin.style.top = `${localY.toFixed(1)}px`;
       });
@@ -3929,6 +4730,36 @@ def build_bg_style(bg: str, extra: str = "") -> str:
     return "".join(parts)
 
 
+def occluded_label_classes(text: str, *, accent: bool = False, extra: str = "") -> tuple[str, bool]:
+    """Return CSS classes for a behind-the-card occluded label and whether compact occlusion is needed."""
+    is_cjk = has_cjk(text)
+    length = len(text.strip())
+    size_cls = ""
+    compact = is_cjk
+    if is_cjk:
+        if length > 8:
+            size_cls = " is-long"
+        elif length > 5:
+            size_cls = " is-medium"
+    else:
+        if length > 13:
+            size_cls = " is-long"
+            compact = True
+        elif length > 8:
+            size_cls = " is-medium"
+            compact = True
+    parts = ["sc-occluded-label"]
+    if is_cjk:
+        parts.append("is-cjk")
+    if size_cls:
+        parts.append(size_cls.strip())
+    if accent:
+        parts.append("is-accent")
+    if extra:
+        parts.append(extra.strip())
+    return " ".join(parts), compact
+
+
 def render_layer_card(
     layer: dict[str, Any],
     extra_cls: str,
@@ -3938,7 +4769,7 @@ def render_layer_card(
 ) -> str:
     trans_cls = " is-transparent" if layer.get("transparent") else ""
     badge = (
-        f'<span class="sc-layer-badge">{esc(layer["index"])}</span>'
+        f'<span class="sc-layer-index">{esc(layer["index"])}</span>'
         if show_badge
         else ""
     )
@@ -4347,6 +5178,7 @@ def build_window_callout_body(card: dict[str, Any]) -> str:
     callouts = card["callouts"]
     is_landscape = card["orientation"] == "landscape"
     is_split = is_landscape and card.get("arrangement", "split") == "split"
+    win_tilt_cls = " is-tilted" if (is_landscape and card.get("tilt", False)) else ""
     brand_html = render_brand_html(card["brand"])
 
     win_bg = build_bg_style(win.get("bg", ""))
@@ -4358,10 +5190,25 @@ def build_window_callout_body(card: dict[str, Any]) -> str:
         else ""
     )
 
-    # On portrait/square, place crisp numbered pins directly on the window to avoid tangled lines.
-    pins_html = ""
-    if not is_landscape:
-        pins_html = "".join(
+    # In-plane focus reticles/pinpoints on landscape; high-contrast numbered pins on portrait/square.
+    markers_html = ""
+    if is_landscape:
+        marker_parts: list[str] = []
+        for idx, co in enumerate(callouts):
+            has_rect = co.get("targetW") is not None and co.get("targetH") is not None
+            if has_rect:
+                marker_parts.append(
+                    f'<div class="wc-reticle" data-marker-idx="{idx}">'
+                    f'<span class="wc-anchor-dot" aria-hidden="true"></span></div>'
+                )
+            else:
+                marker_parts.append(
+                    f'<div class="wc-pinpoint" data-marker-idx="{idx}">'
+                    f'<span class="wc-anchor-dot" aria-hidden="true"></span></div>'
+                )
+        markers_html = "".join(marker_parts)
+    else:
+        markers_html = "".join(
             f'<span class="wc-pin-marker" data-target-x="{co["targetX"]}" data-target-y="{co["targetY"]}" '
             f'style="left:{co["targetX"]}%;top:{co["targetY"]}%;">'
             f'{esc(co["index"])}</span>'
@@ -4369,33 +5216,45 @@ def build_window_callout_body(card: dict[str, Any]) -> str:
         )
 
     callout_cards: list[str] = []
-    for co in callouts:
+    for idx, co in enumerate(callouts):
         media_bg = build_bg_style(co.get("bg", ""))
         media_style_attr = f' style="{media_bg}"' if media_bg else ""
         img_style = build_img_style(co["fit"], co["position"])
-        tag_html = (
-            f'<span class="wc-callout-tag">{esc(co["tag"])}</span>'
-            if co.get("tag")
-            else ""
-        )
         size_attrs = ""
         if co.get("targetW") is not None and co.get("targetH") is not None:
             size_attrs = f' data-target-w="{co["targetW"]}" data-target-h="{co["targetH"]}"'
+        contain_cls = " is-contain" if co["fit"] == "contain" else ""
 
-        if is_split:
-            inline_cap = (
-                f'<span class="wc-callout-inline-sep">·</span>'
-                f'<span class="wc-callout-inline-cap">{esc(co["caption"])}</span>'
-                if co.get("caption")
+        if is_landscape:
+            sub_text = co.get("caption") or co.get("tag") or ""
+            sub_html = (
+                f'<span class="wc-callout-sub">{esc(sub_text)}</span>'
+                if sub_text
                 else ""
             )
-            meta_html = (
-                f'<div class="wc-callout-meta">'
-                f'<div class="wc-callout-head"><span class="sc-idx">{esc(co["index"])}</span>'
+            behind_header = (
+                f'<div class="sc-occluded-header wc-callout-behind">'
+                f'<span class="sc-occluded-label is-accent wc-callout-num">{esc(co["index"])}</span>'
+                f'<div class="wc-callout-meta-top">'
                 f'<span class="wc-callout-title">{esc(co["title"])}</span>'
-                f'{inline_cap}{tag_html}</div></div>'
+                f"{sub_html}</div></div>"
+            )
+            callout_cards.append(
+                f'<div class="wc-callout-unit" data-callout-idx="{idx}" '
+                f'data-target-x="{co["targetX"]}" data-target-y="{co["targetY"]}"{size_attrs}>'
+                f"{behind_header}"
+                f'<div class="wc-callout-frame">'
+                f'<div class="wc-callout-frame-inner">'
+                f'<div class="wc-callout-media{contain_cls}"{media_style_attr}>'
+                f'<img src="{esc(co["image"])}" alt="{esc(co["title"])}" style="{img_style}"></div>'
+                f'</div><span class="wc-target-dot" aria-hidden="true"></span></div></div>'
             )
         else:
+            tag_html = (
+                f'<span class="wc-callout-tag">{esc(co["tag"])}</span>'
+                if co.get("tag")
+                else ""
+            )
             caption_html = (
                 f'<div class="wc-callout-caption">{esc(co["caption"])}</div>'
                 if co.get("caption")
@@ -4403,43 +5262,46 @@ def build_window_callout_body(card: dict[str, Any]) -> str:
             )
             meta_html = (
                 f'<div class="wc-callout-meta">'
-                f'<div class="wc-callout-head"><span class="sc-idx">{esc(co["index"])}</span>'
+                f'<div class="wc-row-num">{esc(co["index"])}</div>'
+                f'<div class="wc-callout-head">'
                 f'<span class="wc-callout-title">{esc(co["title"])}</span>{tag_html}</div>'
                 f"{caption_html}</div>"
             )
-
-        contain_cls = " is-contain" if co["fit"] == "contain" else ""
-        callout_cards.append(
-            f'<div class="wc-callout-card" data-target-x="{co["targetX"]}" data-target-y="{co["targetY"]}"{size_attrs}>'
-            f'<div class="wc-callout-media{contain_cls}"{media_style_attr}>'
-            f'<img src="{esc(co["image"])}" alt="{esc(co["title"])}" style="{img_style}"></div>'
-            f"{meta_html}</div>"
-        )
+            callout_cards.append(
+                f'<div class="wc-callout-card" data-target-x="{co["targetX"]}" data-target-y="{co["targetY"]}"{size_attrs}>'
+                f'<div class="wc-callout-media{contain_cls}"{media_style_attr}>'
+                f'<img src="{esc(co["image"])}" alt="{esc(co["title"])}" style="{img_style}"></div>'
+                f"{meta_html}</div>"
+            )
 
     svg_html = '<svg class="sc-connectors" aria-hidden="true"></svg>' if is_landscape else ""
 
     if is_split:
+        stack_cls = f"wc-callouts-stack count-{len(callouts)}"
         return f"""
-        <div class="wc-header">
-          {brand_html}
-          <div class="wc-title-row">
-            {render_title_html(card["title"])}
-            {render_subtitle_html(card["subtitle"])}
-          </div>
-        </div>
         <div class="wc-split-body">
-          <div class="wc-main-stage">
-            <div class="wc-window-wrap">
-              {win_label_html}
-              <div class="wc-window-frame"{win_style_attr}>
-                <img src="{esc(win["image"])}" alt="{esc(win["label"])}" style="{win_img_style}">
+          <div class="wc-split-left">
+            <div class="wc-header">
+              {brand_html}
+              <div class="wc-title-row">
+                {render_title_html(card["title"])}
+                {render_subtitle_html(card["subtitle"])}
               </div>
             </div>
+            <div class="wc-main-stage">
+              <div class="wc-window-wrap">
+                {win_label_html}
+                <div class="wc-window-frame{win_tilt_cls}"{win_style_attr}>
+                  <img src="{esc(win["image"])}" alt="{esc(win["label"])}" style="{win_img_style}">
+                  {markers_html}
+                </div>
+              </div>
+            </div>
+            {render_footer_html(card["footer"])}
           </div>
           <div class="wc-gutter" aria-hidden="true"></div>
-          <div class="wc-callouts-stack">{"".join(callout_cards)}</div>
+          <div class="{stack_cls}">{"".join(callout_cards)}</div>
         </div>
-        {render_footer_html(card["footer"])}
         {svg_html}
         """
 
@@ -4455,9 +5317,9 @@ def build_window_callout_body(card: dict[str, Any]) -> str:
     <div class="wc-main-stage">
       <div class="wc-window-wrap">
         {win_label_html}
-        <div class="wc-window-frame"{win_style_attr}>
+        <div class="wc-window-frame{win_tilt_cls}"{win_style_attr}>
           <img src="{esc(win["image"])}" alt="{esc(win["label"])}" style="{win_img_style}">
-          {pins_html}
+          {markers_html}
         </div>
       </div>
     </div>
@@ -4474,34 +5336,51 @@ def build_before_after_body(card: dict[str, Any]) -> str:
     is_stacked = card.get("compareOrientation") == "stacked"
     delta_badge = card.get("deltaBadge", "")
     after_wp = after.get("widthPercent")
-    use_ghost_track = is_stacked and after_wp is not None and after_wp < 100
+    use_reclaimed_zone = is_stacked and after_wp is not None and after_wp < 100
     brand_html = render_brand_html(card["brand"])
+
+    def render_delta_monumental(text: str) -> str:
+        if not text:
+            return ""
+        if "·" in text:
+            head, sub = (part.strip() for part in text.split("·", 1))
+            sub_html = f'<div class="ba-delta-sub">{esc(sub)}</div>' if sub else ""
+            return f'<div class="ba-delta-hero">{esc(head)}</div>{sub_html}'
+        return f'<div class="ba-delta-hero">{esc(text)}</div>'
 
     def render_pane(side: dict[str, Any], is_after: bool) -> str:
         contain_cls = " is-contain" if side["fit"] == "contain" else ""
         img_style = build_img_style(side["fit"], side["position"])
-        dot_html = '<span class="sc-dot"></span>' if is_after else ""
         caption_html = (
             f'<div class="ba-caption">{esc(side["caption"])}</div>'
             if side.get("caption")
             else ""
         )
         cls = "ba-pane is-after" if is_after else "ba-pane is-before"
-        if is_after and use_ghost_track:
+        lbl_cls, compact = occluded_label_classes(side["label"], accent=is_after)
+        hdr_cls = "sc-occluded-header is-compact-occlude" if compact else "sc-occluded-header"
+        meta_text = side.get("meta", "")
+        meta_cls = "sc-occluded-meta is-accent" if is_after else "sc-occluded-meta"
+        meta_html = f'<span class="{meta_cls}">{esc(meta_text)}</span>' if meta_text else ""
+        occluded_hdr = (
+            f'<div class="{hdr_cls}">'
+            f'<span class="{lbl_cls}">{esc(side["label"])}</span>'
+            f"{meta_html}</div>"
+        )
+
+        if is_after and use_reclaimed_zone:
             frame_style = build_bg_style(
                 side.get("bg", ""), extra=f"width:{after_wp:g}%;"
             )
             frame_attr = f' style="{frame_style}"' if frame_style else ""
-            ghost_inner = (
-                f'<span class="ba-delta-badge">{esc(delta_badge)}</span>'
-                if delta_badge
-                else ""
-            )
+            reclaimed_inner = render_delta_monumental(delta_badge)
             media_block = (
                 f'<div class="ba-after-track">'
                 f'<div class="ba-frame{contain_cls}"{frame_attr}>'
                 f'<img src="{esc(side["image"])}" alt="{esc(side["label"])}" style="{img_style}"></div>'
-                f'<div class="ba-ghost-zone">{ghost_inner}</div>'
+                f'<div class="ba-reclaimed-zone">'
+                f'<div class="ba-trim-hairline" aria-hidden="true"></div>'
+                f"{reclaimed_inner}</div>"
                 f"</div>"
             )
         else:
@@ -4511,24 +5390,25 @@ def build_before_after_body(card: dict[str, Any]) -> str:
                 f'<div class="ba-frame{contain_cls}"{frame_attr}>'
                 f'<img src="{esc(side["image"])}" alt="{esc(side["label"])}" style="{img_style}"></div>'
             )
-        return (
-            f'<div class="{cls}">'
-            f'<div class="ba-label-row"><span class="ba-pill">{dot_html}<span>{esc(side["label"])}</span></span></div>'
-            f"{media_block}"
-            f"{caption_html}</div>"
-        )
+        return f'<div class="{cls}">{occluded_hdr}{media_block}{caption_html}</div>'
 
     if is_stacked:
-        bridge_svg = (
-            '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">'
-            '<path d="M10 4V15.5M10 15.5L5.5 11M10 15.5L14.5 11" '
-            'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        arrow_svg = (
+            '<svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">'
+            '<path d="M14 4V22.5M14 22.5L7.5 16M14 22.5L20.5 16" '
+            'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
         )
     else:
-        bridge_svg = (
-            '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">'
-            '<path d="M4 10H15.5M15.5 10L11 5.5M15.5 10L11 14.5" '
-            'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        arrow_svg = (
+            '<svg width="64" height="32" viewBox="0 0 64 32" fill="none" aria-hidden="true">'
+            '<defs><linearGradient id="baArrowBeam" x1="2" y1="16" x2="56" y2="16" gradientUnits="userSpaceOnUse">'
+            '<stop offset="0%" stop-color="currentColor" stop-opacity="0.12"/>'
+            '<stop offset="58%" stop-color="currentColor" stop-opacity="0.72"/>'
+            '<stop offset="100%" stop-color="currentColor" stop-opacity="1"/>'
+            '</linearGradient></defs>'
+            '<line x1="2" y1="16" x2="55" y2="16" stroke="url(#baArrowBeam)" stroke-width="2" stroke-linecap="round"/>'
+            '<path d="M47 8.5L56.5 16L47 23.5" stroke="currentColor" stroke-width="2.1" '
+            'stroke-linecap="round" stroke-linejoin="round"/></svg>'
         )
 
     note_html = (
@@ -4544,31 +5424,40 @@ def build_before_after_body(card: dict[str, Any]) -> str:
     )
 
     if is_stacked:
-        show_inline_delta = bool(delta_badge) and not use_ghost_track
-        bridge_cls = "ba-bridge is-inline has-delta" if show_inline_delta else "ba-bridge is-inline"
-        delta_html = (
-            f'<span class="ba-delta-badge">{esc(delta_badge)}</span>'
+        show_inline_delta = bool(delta_badge) and not use_reclaimed_zone
+        delta_inline_html = (
+            f'<span class="ba-delta-inline">{esc(delta_badge)}</span>'
             if show_inline_delta
             else ""
         )
+        plane_hairline = (
+            f'<div class="ba-plane-hairline" style="left:{after_wp:g}%;" aria-hidden="true"></div>'
+            if use_reclaimed_zone
+            else ""
+        )
+        divider_html = (
+            ""
+            if use_reclaimed_zone
+            else f'<div class="ba-divider-row" aria-hidden="true">{arrow_svg}{delta_inline_html}</div>'
+        )
         stage_inner = (
+            f'<div class="ba-stacked-plane">'
             f"{render_pane(before, False)}"
-            f'<div class="ba-divider-row">'
-            f'<div class="{bridge_cls}" aria-hidden="true">{bridge_svg}{delta_html}</div>'
-            f"</div>"
+            f"{plane_hairline}"
+            f"{divider_html}"
             f"{render_pane(after, True)}"
+            f"</div>"
         )
     else:
-        bridge_cls = "ba-bridge has-delta" if delta_badge else "ba-bridge"
-        delta_html = (
-            f'<span class="ba-delta-badge">{esc(delta_badge)}</span>'
+        delta_inline_html = (
+            f'<span class="ba-delta-inline">{esc(delta_badge)}</span>'
             if delta_badge
             else ""
         )
         stage_inner = (
             f"{render_pane(before, False)}"
+            f'<div class="ba-arrow-bridge" aria-hidden="true">{arrow_svg}{delta_inline_html}</div>'
             f"{render_pane(after, True)}"
-            f'<div class="{bridge_cls}" aria-hidden="true">{bridge_svg}{delta_html}</div>'
         )
 
     return f"""
@@ -4589,22 +5478,76 @@ def build_before_after_body(card: dict[str, Any]) -> str:
 def build_workflow_steps_body(card: dict[str, Any]) -> str:
     steps = card["steps"]
     orient = card["orientation"]
+    ws_style = card.get("wsStyle", "row")
     brand_html = render_brand_html(card["brand"])
+
+    if ws_style == "staged" and orient == "landscape":
+        milestones: list[str] = []
+        for st in steps:
+            cap_html = (
+                f'<div class="ws-milestone-caption">{esc(st["caption"])}</div>'
+                if st.get("caption")
+                else ""
+            )
+            milestones.append(
+                f'<div class="ws-milestone">'
+                f'<div class="ws-milestone-idx">{esc(st["index"])}</div>'
+                f'<div><div class="ws-milestone-title">{esc(st["title"])}</div>'
+                f"{cap_html}</div></div>"
+            )
+
+        hero_step = steps[-1]
+        fg_steps = steps[:-1]
+        hero_bg = build_bg_style(hero_step.get("bg", ""))
+        hero_attr = f' style="{hero_bg}"' if hero_bg else ""
+        hero_img_style = build_img_style(hero_step["fit"], hero_step["position"])
+        hero_contain = " is-contain" if hero_step["fit"] == "contain" else ""
+
+        arena_parts: list[str] = [
+            f'<div class="ws-stage-num ws-stage-num-hero">{esc(hero_step["index"])}</div>',
+            f'<div class="ws-stage-plane ws-stage-hero{hero_contain}"{hero_attr}>'
+            f'<img src="{esc(hero_step["image"])}" alt="{esc(hero_step["title"])}" style="{hero_img_style}"></div>',
+        ]
+        for fi, st in enumerate(fg_steps):
+            fg_bg = build_bg_style(st.get("bg", ""))
+            fg_attr = f' style="{fg_bg}"' if fg_bg else ""
+            fg_img_style = build_img_style(st["fit"], st["position"])
+            fg_contain = " is-contain" if st["fit"] == "contain" else ""
+            arena_parts.append(
+                f'<div class="ws-stage-num ws-stage-num-{fi}">{esc(st["index"])}</div>'
+            )
+            arena_parts.append(
+                f'<div class="ws-stage-plane ws-stage-fg-{fi}{fg_contain}"{fg_attr}>'
+                f'<img src="{esc(st["image"])}" alt="{esc(st["title"])}" style="{fg_img_style}"></div>'
+            )
+
+        return f"""
+        <div class="ws-staged-left">
+          {brand_html}
+          {render_title_html(card["title"])}
+          {render_subtitle_html(card["subtitle"])}
+          <div class="ws-milestones">{"".join(milestones)}</div>
+          {render_footer_html(card["footer"])}
+        </div>
+        <div class="ws-staged-arena">
+          {"".join(arena_parts)}
+        </div>
+        """
 
     use_vertical = orient == "portrait" and (len(steps) == 3 or card.get("isTall", False))
     use_grid = (orient == "square") or (orient == "portrait" and not use_vertical)
 
     h_arrow = (
         '<div class="ws-arrow" aria-hidden="true">'
-        '<svg width="18" height="18" viewBox="0 0 18 18" fill="none">'
-        '<path d="M3 9H14.5M14.5 9L10.5 5M14.5 9L10.5 13" '
-        'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'
+        '<svg width="20" height="20" viewBox="0 0 20 20" fill="none">'
+        '<path d="M3 10H16.5M16.5 10L12 5.5M16.5 10L12 14.5" '
+        'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'
     )
     v_arrow = (
         '<div class="ws-arrow" aria-hidden="true">'
-        '<svg width="18" height="18" viewBox="0 0 18 18" fill="none">'
-        '<path d="M9 3V14.5M9 14.5L5 10.5M9 14.5L13 10.5" '
-        'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'
+        '<svg width="20" height="20" viewBox="0 0 20 20" fill="none">'
+        '<path d="M10 3V16.5M10 16.5L5.5 12M10 16.5L14.5 12" '
+        'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'
     )
 
     parts: list[str] = []
@@ -4620,15 +5563,31 @@ def build_workflow_steps_body(card: dict[str, Any]) -> str:
             else ""
         )
         contain_cls = " is-contain" if step["fit"] == "contain" else ""
-        parts.append(
-            f'<div class="ws-step-card">'
-            f'<div class="ws-step-media{contain_cls}"{media_attr}>'
-            f'<img src="{esc(step["image"])}" alt="{esc(step["title"])}" style="{img_style}"></div>'
-            f'<div class="ws-step-body">'
-            f'<div class="ws-step-head"><span class="sc-idx">{esc(step["index"])}</span>'
-            f'<span class="ws-step-title">{esc(step["title"])}</span></div>'
-            f"{caption_html}</div></div>"
-        )
+        if use_vertical:
+            parts.append(
+                f'<div class="ws-step-card">'
+                f'<div class="ws-step-media{contain_cls}"{media_attr}>'
+                f'<img src="{esc(step["image"])}" alt="{esc(step["title"])}" style="{img_style}"></div>'
+                f'<div class="ws-step-body">'
+                f'<div class="wc-row-num">{esc(step["index"])}</div>'
+                f'<div class="ws-step-head">'
+                f'<span class="ws-step-title">{esc(step["title"])}</span></div>'
+                f"{caption_html}</div></div>"
+            )
+        else:
+            parts.append(
+                f'<div class="ws-step-unit">'
+                f'<div class="sc-occluded-header ws-step-behind">'
+                f'<span class="sc-occluded-label is-accent ws-step-num">{esc(step["index"])}</span>'
+                f"</div>"
+                f'<div class="ws-step-card">'
+                f'<div class="ws-step-media{contain_cls}"{media_attr}>'
+                f'<img src="{esc(step["image"])}" alt="{esc(step["title"])}" style="{img_style}"></div>'
+                f'<div class="ws-step-body">'
+                f'<div class="ws-step-head">'
+                f'<span class="ws-step-title">{esc(step["title"])}</span></div>'
+                f"{caption_html}</div></div></div>"
+            )
 
     flow_cls = "ws-flow is-grid" if use_grid else ("ws-flow is-vertical" if use_vertical else "ws-flow")
     return f"""
@@ -4674,11 +5633,26 @@ def build_card_html(card: dict[str, Any], fonts_css_href: str) -> str:
     ba_orient_cls = (
         f" ba-orient-{card['compareOrientation']}" if layout == "before-after" else ""
     )
+    ws_style_cls = (
+        f" ws-style-{card.get('wsStyle', 'row')}" if layout == "workflow-steps" else ""
+    )
+    tilt_cls = " is-tilted" if card.get("tilt", False) else ""
     theme_cls = f"theme-{card['theme']}"
     display_cls = f"display-{card['displayStyle']}"
     tall_cls = " is-tall" if card.get("isTall") else ""
     extra_script = (
         CONNECTOR_SCRIPT if layout in ("section-assembly", "window-callout") else ""
+    )
+    grain_freq = THEME_GRAIN_FREQUENCY.get(card["theme"], "0.86")
+    w, h = card["width"], card["height"]
+    grain_svg = (
+        f'<svg class="sc-grain" aria-hidden="true" viewBox="0 0 {w} {h}" preserveAspectRatio="none">'
+        f'<filter id="sc-grain-filter">'
+        f'<feTurbulence type="fractalNoise" baseFrequency="{grain_freq}" numOctaves="3" stitchTiles="stitch"/>'
+        f'<feColorMatrix type="saturate" values="0"/>'
+        f"</filter>"
+        f'<rect width="{w}" height="{h}" filter="url(#sc-grain-filter)"/>'
+        f"</svg>"
     )
 
     html_lang = "zh-CN" if is_cjk_card(card) else "en"
@@ -4694,10 +5668,13 @@ def build_card_html(card: dict[str, Any], fonts_css_href: str) -> str:
 </head>
 <body class="{esc(theme_cls)}">
   <main
-    class="sc-canvas {esc(theme_cls)} {esc(display_cls)} layout-{esc(layout)} orient-{esc(card["orientation"])}{tall_cls}{variant_cls}{arrange_cls}{ba_orient_cls}"
-    style="--canvas-w:{card["width"]}px;--canvas-h:{card["height"]}px;--accent:{esc(card["accent"])};--accent-ink:{esc(card["accentInk"])};"
+    class="sc-canvas {esc(theme_cls)} {esc(display_cls)} layout-{esc(layout)} orient-{esc(card["orientation"])}{tall_cls}{variant_cls}{arrange_cls}{ba_orient_cls}{ws_style_cls}{tilt_cls}"
+    style="--canvas-w:{w}px;--canvas-h:{h}px;--accent:{esc(card["accent"])};--accent-ink:{esc(card["accentInk"])};"
   >
+    <div class="sc-studio-keylight" aria-hidden="true"></div>
+    <div class="sc-ambient-bounce" aria-hidden="true"></div>
     {body_inner}
+    {grain_svg}
   </main>
   {extra_script}
 </body>

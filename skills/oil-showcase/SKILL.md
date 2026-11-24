@@ -4,12 +4,12 @@ description: 用克制的画廊编辑风将任意真实产品截图（网站、�
 license: MIT
 compatibility: 核心脚本仅使用 Python 3.10+ 标准库，调用本机 Chrome、Chromium 或 Microsoft Edge 无头模式渲染，无需安装外部依赖，内置 SIL OFL 字体。
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # oil-showcase
 
-把真实产品画面编排成克制、耐看的高分辨率展示卡。画板提供三套中性主题（`warm-paper`、`dark-studio`、`cool-gallery`），只把产品主题色克制地注入序号、虚线连线、对比箭头和极小标记点，适配网站、深色桌面工作台、原生工具与移动 App。
+把真实产品画面编排成克制、耐看的高分辨率展示卡。画板内置纯代码摄影棚布光（左上斜向主光、轻柔主体反光与内联 SVG 哑光颗粒，覆盖 `warm-paper`、`dark-studio`、`cool-gallery` 三套中性主题），只把产品主题色克制地注入遮挡雕塑字序号、发光虚线标线、极简过渡箭头和焦点框，适配网站、深色桌面工作台、原生工具与移动 App。
 
 下文 `<python>` 指 Python 3.10+ 解释器：macOS 与 Linux 通常为 `python3`，Windows 通常为 `py -3`。
 
@@ -48,15 +48,15 @@ metadata:
 | `layered-bento` | 左侧分层叠卡 + 右侧 2 列模块 Bento |
 | `section-assembly` | 中栏切片用虚线指向右侧竖向整页 |
 | `module-bento` | 顶部标题 + 3×2 / 2×2 / 2+3 业务模块网格 |
-| `gallery-wall` | 倾斜整页展陈（`tilted-pages`）或画廊拼接墙（`collage`） |
-| `window-callout` | 左侧大主窗口 + 右侧 2–4 张放大细节卡与水平标线（可选上下 `stacked`） |
-| `before-after` | 开启前/后、改版前/后或深浅双态并排/上下对比 |
-| `workflow-steps` | 3–4 步端到端产品操作流程串联 |
+| `gallery-wall` | 规整多页展陈（`tilted-pages`）或拼接画廊墙（`collage`，默认横平竖直，可加 `tilt: true`） |
+| `window-callout` | 左侧大主窗口 + 右侧 2–4 张放大细节卡与发光虚线标线（可选上下 `stacked`） |
+| `before-after` | 尺度与光影分层的开启前/后、改版前/后并排或上下对比（支持 `widthPercent` 与光束裁切线） |
+| `workflow-steps` | 3–4 步端到端流程串联（规整横排 `row` 或非对称层次舞台 `style: "staged"`） |
 
-- 主题 `theme` 可选 `warm-paper`（默认衬线）、`dark-studio`（深色哑光无衬线，适配深色专业工具）或 `cool-gallery`（冷灰无衬线，适配原生与效率工具），均可用 `displayStyle` 单独覆盖标题字体风格。
+- 主题 `theme` 可选 `warm-paper`（暖纸棉纹，默认衬线）、`dark-studio`（深色阳极哑光无衬线）或 `cool-gallery`（冷灰建筑哑光无衬线），均内置左上主光、微颗粒质感与卡片高光描边，可用 `displayStyle` 单独覆盖标题字体风格。
 - 选定画幅比例（`16:9`、`4:3`、`3:4`、`9:16`、`1:1` 或自定义 `WxH`）和产品主题色 `accent`，深色或异形截图善用 `fit`、`position`、`bg`。
 - **语言跟随用户（Language follows conversation）**：所有卡片标题、副标题、步骤与放大标注、对比标签（`before`/`after`）和图例默认跟随当前用户对话语言（中文对话中文，英文对话英文），仅当用户明确要求时切换。
-- **视觉张力四原则**：(1) **尺度反差**——优先用大主视觉 + 2–4× 局部放大（`window-callout`、`layered-hero`、`section-assembly`）制造落差，避免所有格子平权铺满；(2) **有依据的倾斜**——仅在真实分层、整页画廊氛围（`gallery-wall`）或组图首张封面破局时倾斜拆层，细读代码/文字稿/时间轴或严格对比时保持横平竖直；(3) **对比剧变**——`before-after` 须有 >50% 肉眼可见变化，横向时间轴/波形优先用 `orientation: "stacked"` 配合 `after.widthPercent` + `deltaBadge`；(4) **同排语境统一**——`workflow-steps` 与 `module-bento` 同排卡片保持统一满出血或统一留白舞台，不混拼裸露浮卡与彩色全屏壁纸。
+- **视觉张力与高清边界**：(1) **纯代码布光 + 卡片后遮挡雕塑字**——弃用带框胶囊标签，将大号 `BEFORE`/`AFTER`（中文自动 `对比前`/`对比后`）与 `01`/`02`/`03` 置于卡片背后微遮挡 18–25% 制造层次；(2) **默认横平竖直保高清**——`before-after`、`window-callout`、`workflow-steps`（`row`）、`module-bento`、`section-assembly`、`gallery-wall` 默认 `0deg` 端正对齐，避免旋转重采样模糊界面文字（必要时显式设 `tilt: true`）；仅 `layered-hero` 与 `workflow-steps` `style: "staged"` 默认分层微倾（可设 `tilt: false` 关闭）；(3) **尺度与对比剧变**——`before-after` 须 >50% 可见变化，左右并排靠前主卡放大提亮、上下时间轴配 `after.widthPercent` + 发光裁切线 + 无框大字 `deltaBadge`；(4) **同排语境统一**——同排卡片统一满出血或统一留白舞台，不混拼裸露浮卡与全屏彩色壁纸。
 - **单一文字锚点，不分散堆字**：每张展板只在左上角保留「品牌标 + 一句短主标题」（必要时紧跟 1 行短说明），不在右上角另起装饰标签或分散多处小字；次级说明字号不低于可读下限（`15–21px`），标题与画面已说清时直接省略 `subtitle`、`caption` 和 `footer`。
 - 若需求明显超出 8 种内置版式，可遵循参考文档令牌编写自定义 HTML，再用 `shoot` 导出。
 

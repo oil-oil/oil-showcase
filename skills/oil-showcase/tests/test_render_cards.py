@@ -91,6 +91,11 @@ class RenderCardsValidationTest(unittest.TestCase):
         too_small = [s for s in sizes if s < 14.0]
         self.assertEqual(too_small, [], f"Found unreadable micro font-sizes < 14px: {too_small}")
 
+    def test_security_no_allow_file_access_from_files_flag(self) -> None:
+        src = SCRIPT_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("--allow-file-access-from-files", src)
+        self.assertIn("POSITION_RE", src)
+
     def test_malformed_json_rejected(self) -> None:
         spec = self.tmp_dir / "broken.json"
         spec.write_text("{not valid json", encoding="utf-8")
@@ -850,14 +855,19 @@ class RenderCardsIntegrationTest(unittest.TestCase):
 
         ba_cool_html = (out_dir / "html" / "03-before-after-cool.html").read_text(encoding="utf-8")
         self.assertIn("theme-cool-gallery display-sans", ba_cool_html)
-        self.assertIn('class="ba-bridge"', ba_cool_html)
+        self.assertIn('class="ba-arrow-bridge"', ba_cool_html)
+        self.assertIn("sc-occluded-label", ba_cool_html)
+        self.assertNotIn("ba-pill", ba_cool_html)
         self.assertNotIn('<div class="sc-eyebrow">', ba_cool_html)
 
         ba_warm_html = (out_dir / "html" / "04-before-after-vertical.html").read_text(encoding="utf-8")
         self.assertIn("theme-warm-paper display-serif", ba_warm_html)
+        self.assertIn("sc-studio-keylight", ba_warm_html)
+        self.assertIn("feTurbulence", ba_warm_html)
 
         ws_cool_html = (out_dir / "html" / "05-workflow-steps-cool.html").read_text(encoding="utf-8")
         self.assertIn('class="ws-arrow"', ws_cool_html)
+        self.assertIn("sc-occluded-label", ws_cool_html)
         self.assertNotIn('<div class="sc-eyebrow">', ws_cool_html)
 
         # Verify window-callout split (default + focus reticle) AND stacked opt-in + 3:4 horizontal-split callouts
@@ -1105,8 +1115,9 @@ class RenderCardsIntegrationTest(unittest.TestCase):
         self.assertEqual(rc_zh, 0, payload_zh)
         zh_html = (zh_out / "html" / "ba-zh-auto.html").read_text(encoding="utf-8")
         self.assertIn('<html lang="zh-CN">', zh_html)
-        self.assertIn("<span>对比前</span>", zh_html)
-        self.assertIn("<span>对比后</span>", zh_html)
+        self.assertIn('sc-occluded-label is-cjk">对比前</span>', zh_html)
+        self.assertIn('sc-occluded-label is-cjk is-accent">对比后</span>', zh_html)
+        self.assertNotIn("ba-pill", zh_html)
         zh_sheet = (zh_out / "index.html").read_text(encoding="utf-8")
         self.assertIn('<html lang="zh-CN">', zh_sheet)
         self.assertIn("展示卡片总览", zh_sheet)
@@ -1135,8 +1146,9 @@ class RenderCardsIntegrationTest(unittest.TestCase):
         self.assertEqual(rc_en, 0, payload_en)
         en_html = (en_out / "html" / "ba-en-auto.html").read_text(encoding="utf-8")
         self.assertIn('<html lang="en">', en_html)
-        self.assertIn("<span>BEFORE</span>", en_html)
-        self.assertIn("<span>AFTER</span>", en_html)
+        self.assertIn('sc-occluded-label">BEFORE</span>', en_html)
+        self.assertIn('sc-occluded-label is-accent">AFTER</span>', en_html)
+        self.assertNotIn("ba-pill", en_html)
         en_sheet = (en_out / "index.html").read_text(encoding="utf-8")
         self.assertIn('<html lang="en">', en_sheet)
         self.assertIn("Showcase Contact Sheet", en_sheet)
@@ -1226,14 +1238,157 @@ class RenderCardsIntegrationTest(unittest.TestCase):
         self.assertIn("ba-orient-stacked", ba_html)
         self.assertIn("ba-after-track", ba_html)
         self.assertIn("width:75%;", ba_html)
-        self.assertIn("ba-ghost-zone", ba_html)
-        self.assertIn("-7.1 s · 删去 8 处停顿", ba_html)
+        self.assertIn("ba-reclaimed-zone", ba_html)
+        self.assertIn("ba-trim-hairline", ba_html)
+        self.assertIn("-7.1 s", ba_html)
+        self.assertIn("删去 8 处停顿", ba_html)
+        self.assertNotIn("ba-pill", ba_html)
+        self.assertNotIn('ba-orient-stacked is-tilted"', ba_html)
 
         ws_html = (out_dir / "html" / "ws-contain-padded.html").read_text(encoding="utf-8")
         self.assertIn("ws-step-media is-contain", ws_html)
 
         mb_html = (out_dir / "html" / "mb-contain-padded.html").read_text(encoding="utf-8")
         self.assertIn("mb-card-media is-contain", mb_html)
+
+    def test_v030_studio_lighting_tilt_controls_and_staged_workflow(self) -> None:
+        spec_data = {
+            "brand": {"name": "Studio Kit", "tag": "v0.3.0"},
+            "cards": [
+                {
+                    "id": "studio-warm-ba-upright",
+                    "layout": "before-after",
+                    "theme": "warm-paper",
+                    "ratio": "16:9",
+                    "accent": "#0284c7",
+                    "title": "Upright by default.",
+                    "before": {"image": "assets/mod-1.png", "meta": "Base artwork"},
+                    "after": {"image": "assets/mod-2.png", "meta": "Live product"},
+                },
+                {
+                    "id": "studio-cool-ba-tilted",
+                    "layout": "before-after",
+                    "theme": "cool-gallery",
+                    "ratio": "16:9",
+                    "accent": "#0284c7",
+                    "tilt": True,
+                    "title": "Opt-in tilt comparison.",
+                    "before": {"image": "assets/mod-1.png"},
+                    "after": {"image": "assets/mod-2.png"},
+                },
+                {
+                    "id": "studio-dark-wc-upright",
+                    "layout": "window-callout",
+                    "theme": "dark-studio",
+                    "ratio": "16:9",
+                    "accent": "#2fbf71",
+                    "title": "Razor sharp upright window.",
+                    "window": {"image": "assets/hero.png", "bg": "#15181d"},
+                    "callouts": [
+                        {"title": "Pane A", "caption": "Tree", "image": "assets/mod-1.png", "targetX": 15, "targetY": 20, "targetW": 20, "targetH": 16},
+                        {"title": "Pane B", "caption": "Diff", "image": "assets/mod-2.png", "targetX": 72, "targetY": 62, "targetW": 40, "targetH": 22},
+                    ],
+                },
+                {
+                    "id": "studio-staged-default",
+                    "layout": "workflow-steps",
+                    "style": "staged",
+                    "theme": "dark-studio",
+                    "ratio": "16:9",
+                    "accent": "#f4503c",
+                    "title": "Hand edits to\nyour AI agent.",
+                    "subtitle": "Prompt, review cuts, and capture autonomously.",
+                    "footer": "LOCAL CLI · MACOS",
+                    "steps": [
+                        {"title": "Prompt CLI", "caption": "Submit structured plan", "image": "assets/mod-1.png"},
+                        {"title": "Review cuts", "caption": "Inspect proposed retakes", "image": "assets/mod-2.png"},
+                        {"title": "Record live", "caption": "Autonomous demo stage", "image": "assets/hero.png"},
+                    ],
+                },
+                {
+                    "id": "studio-staged-flat",
+                    "layout": "workflow-steps",
+                    "style": "staged",
+                    "tilt": False,
+                    "theme": "cool-gallery",
+                    "ratio": "16:9",
+                    "accent": "#2563eb",
+                    "title": "Flat staged workflow.",
+                    "steps": [
+                        {"title": "Step one", "image": "assets/mod-1.png"},
+                        {"title": "Step two", "image": "assets/mod-2.png"},
+                        {"title": "Step three", "image": "assets/hero.png"},
+                    ],
+                },
+            ],
+        }
+        spec_path = self.tmp_dir / "v030.spec.json"
+        spec_path.write_text(json.dumps(spec_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        out_dir = self.tmp_dir / "out-v030"
+        rc, payload = run_cli("render", str(spec_path), "--out-dir", str(out_dir), "--scale", "1")
+        self.assertEqual(rc, 0, payload)
+        self.assertEqual(payload["rendered"], 5)
+
+        for card in payload["cards"]:
+            self.assertEqual(card["warnings"], [], f"Unexpected warnings for {card['id']}: {card['warnings']}")
+            html_text = Path(card["html"]).read_text(encoding="utf-8")
+            self.assertIn("sc-studio-keylight", html_text)
+            self.assertIn("sc-ambient-bounce", html_text)
+            self.assertIn("sc-grain", html_text)
+            self.assertIn("feTurbulence", html_text)
+            self.assertNotIn("ba-pill", html_text)
+            self.assertNotIn("sc-layer-badge", html_text)
+
+        ba_upright = (out_dir / "html" / "studio-warm-ba-upright.html").read_text(encoding="utf-8")
+        self.assertNotIn(" is-tilted", ba_upright)
+        self.assertIn("sc-occluded-label", ba_upright)
+        self.assertIn("BASE ARTWORK" if False else "Base artwork", ba_upright)
+
+        ba_tilted = (out_dir / "html" / "studio-cool-ba-tilted.html").read_text(encoding="utf-8")
+        self.assertIn("ba-orient-side-by-side is-tilted", ba_tilted)
+
+        wc_upright = (out_dir / "html" / "studio-dark-wc-upright.html").read_text(encoding="utf-8")
+        self.assertNotIn("wc-window-frame is-tilted", wc_upright)
+        self.assertIn("wc-reticle", wc_upright)
+        self.assertIn("sc-occluded-label is-accent wc-callout-num", wc_upright)
+
+        ws_staged = (out_dir / "html" / "studio-staged-default.html").read_text(encoding="utf-8")
+        self.assertIn("ws-style-staged is-tilted", ws_staged)
+        self.assertIn("ws-milestones", ws_staged)
+        self.assertIn("ws-stage-hero", ws_staged)
+        self.assertIn("ws-stage-num-hero", ws_staged)
+
+        ws_staged_flat = (out_dir / "html" / "studio-staged-flat.html").read_text(encoding="utf-8")
+        self.assertIn("ws-style-staged", ws_staged_flat)
+        self.assertNotIn("ws-style-staged is-tilted", ws_staged_flat)
+
+        # Invalid style and non-bool tilt rejected
+        bad_spec = self.tmp_dir / "bad-v030.spec.json"
+        bad_spec.write_text(
+            json.dumps(
+                {
+                    "cards": [
+                        {
+                            "id": "bad-ws-style",
+                            "layout": "workflow-steps",
+                            "style": "carousel",
+                            "tilt": "yes",
+                            "title": "Invalid",
+                            "steps": [
+                                {"title": "A", "image": "assets/mod-1.png"},
+                                {"title": "B", "image": "assets/mod-2.png"},
+                                {"title": "C", "image": "assets/mod-3.png"},
+                            ],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        rc_bad, payload_bad = run_cli("render", str(bad_spec), "--out-dir", str(self.tmp_dir / "out-bad"))
+        self.assertEqual(rc_bad, 1)
+        self.assertTrue(any("style" in e for e in payload_bad["errors"]), payload_bad["errors"])
+        self.assertTrue(any("tilt" in e for e in payload_bad["errors"]), payload_bad["errors"])
 
 
 if __name__ == "__main__":

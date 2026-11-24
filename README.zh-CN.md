@@ -16,36 +16,56 @@
 
 ---
 
-## 真实产出示例
+## 全部 8 种内置版式实拍示例
 
-以下卡片均由 `oil-showcase` 基于真实界面截图在本地直接渲染，覆盖三套中性画板主题（`warm-paper`、`dark-studio`、`cool-gallery`）。
+以下展板均由 `oil-showcase` 基于 **Oil Studio** 与 **Oil UI** 真实界面截图在本地直接渲染，完整覆盖 8 种版式与 3 套内置摄影棚布光的中性主题（`warm-paper`、`dark-studio`、`cool-gallery`）。需要细读界面的版式默认横平竖直（`0°`）以保持最高清锐度，并统一采用纯代码左上主光、微颗粒质感与卡片后遮挡雕塑字。
 
 <p align="center">
-  <img src="./assets/readme/02-dark-window-callout.webp" width="100%" alt="dark-studio 主题 window-callout 版式，展示深色桌面 Git 工作台、聚焦框与三张带绿色虚线标线的局部放大卡">
+  <img src="./assets/readme/01-window-callout-studio.webp" width="100%" alt="dark-studio 主题 window-callout 版式，展示 Oil Studio 桌面剪辑工作台、端正高清画面、卡片后遮挡 01-03 序号与发光虚线标线">
 </p>
 <p align="center">
-  <sub><code>dark-studio</code> · <code>window-callout</code> · <code>16:9</code> — 暗棚哑光底板专为深色桌面工作台消除截图白边</sub>
+  <sub><code>dark-studio</code> · <code>window-callout</code> · <code>16:9</code> — 端正高清 Oil Studio 工作台，卡片后遮挡 <code>01–03</code> 放大解剖与发光标线</sub>
 </p>
 
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="./assets/readme/01-warm-layered-hero.webp" width="100%" alt="warm-paper 主题 layered-hero 版式，拆解底图、真实界面与透明前景的三层叠加关系">
-      <br><sub><code>warm-paper</code> · <code>layered-hero</code> · <code>16:9</code> — 暖纸分层主视觉</sub>
+      <img src="./assets/readme/02-before-after-cool.webp" width="100%" alt="cool-gallery 主题左右并排 before-after 版式，对比原始生物荧光 X 光底图与完整的 Helixa 分子计算首屏">
+      <br><sub><code>cool-gallery</code> · <code>before-after</code>（并排）· <code>16:9</code> — 端正尺度与天光反差对比（Oil UI · Helixa）</sub>
     </td>
     <td width="50%" valign="top">
-      <img src="./assets/readme/03-cool-before-after.webp" width="100%" alt="cool-gallery 主题 before-after 版式，对比原始生物荧光 X 光底图与完整的 Helixa 分子计算产品首屏">
-      <br><sub><code>cool-gallery</code> · <code>before-after</code> · <code>16:9</code> — 原始底图到完整产品首屏对比</sub>
+      <img src="./assets/readme/03-before-after-stacked.webp" width="100%" alt="dark-studio 主题上下堆叠 before-after 版式，对比 Oil Studio 0:32 原始时间轴与 0:24 精剪时间轴，并配发光光学裁切线与 -7.1s 指标">
+      <br><sub><code>dark-studio</code> · <code>before-after</code>（上下堆叠）· <code>16:9</code> — 同轴时间轴剪辑对比与发光光学裁切线（Oil Studio）</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="./assets/readme/04-warm-section-assembly.webp" width="100%" alt="warm-paper 主题 section-assembly 版式，用虚线将四组视觉切片映射到右侧完整落地页">
-      <br><sub><code>warm-paper</code> · <code>section-assembly</code> · <code>16:9</code> — 暖纸页面切片拆解</sub>
+      <img src="./assets/readme/04-workflow-staged.webp" width="100%" alt="dark-studio 主题 workflow-steps staged 版式，展示 Oil Studio AI Agent CLI 触发、审阅 12 处剪辑与自动录屏三步层次舞台">
+      <br><sub><code>dark-studio</code> · <code>workflow-steps</code>（<code>staged</code>）· <code>16:9</code> — 非对称 3D 层次舞台与左侧里程碑栏（Oil Studio）</sub>
     </td>
     <td width="50%" valign="top">
-      <img src="./assets/readme/05-cool-workflow-steps.webp" width="100%" alt="cool-gallery 主题 workflow-steps 版式，用细箭头串联四屏产品界面流程">
-      <br><sub><code>cool-gallery</code> · <code>workflow-steps</code> · <code>16:9</code> — 冷灰四屏流程串联</sub>
+      <img src="./assets/readme/08-module-bento-dark.webp" width="100%" alt="dark-studio 主题 module-bento 版式，规整 3x2 网格展示 Oil Studio 六项本地 Mac 核心功能">
+      <br><sub><code>dark-studio</code> · <code>module-bento</code> · <code>16:9</code> — 规整 3×2 本地功能模块总览（Oil Studio）</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/05-layered-hero-warm.webp" width="100%" alt="warm-paper 主题 layered-hero 版式，拆解 Cairn 冰川底图、真实界面与透明前景冰层的三层叠加关系">
+      <br><sub><code>warm-paper</code> · <code>layered-hero</code> · <code>16:9</code> — 暖纸三层拆解与实景首屏（Oil UI · Cairn）</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/06-layered-bento-warm.webp" width="100%" alt="warm-paper 主题 layered-bento 版式，左侧 Kova 三层结构叠加搭配右侧 6 个 Oil UI 真实产品首屏网格">
+      <br><sub><code>warm-paper</code> · <code>layered-bento</code> · <code>16:9</code> — 左侧分层原理搭配右侧 6 格实景 Bento（Oil UI）</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/07-section-assembly-warm.webp" width="100%" alt="warm-paper 主题 section-assembly 版式，用发光虚线将四组规整视觉切片映射到右侧完整 Kova 落地页">
+      <br><sub><code>warm-paper</code> · <code>section-assembly</code> · <code>16:9</code> — 规整页面切片连线拆解（Oil UI · Kova）</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/09-gallery-wall-warm.webp" width="100%" alt="warm-paper 主题 gallery-wall 版式，规整对齐陈列 Plinth、Aquarelle、Atkins、Quicksilver 四套 Oil UI 落地页">
+      <br><sub><code>warm-paper</code> · <code>gallery-wall</code> · <code>16:9</code> — 严格规整对齐的多屏画廊墙（Oil UI）</sub>
     </td>
   </tr>
 </table>
@@ -55,12 +75,12 @@
 切换到竖屏画幅时，横向标注会自动转为高对比数字定位针，双栏对比自动切换为上下堆叠，直接适配小红书、视频号封面与移动端图文。
 
 <p align="center">
-  <img src="./assets/readme/06a-xhs-3x4.webp" width="340" alt="dark-studio 主题 3:4 竖版 window-callout 卡片，采用数字定位针标注关键区域">
+  <img src="./assets/readme/10a-portrait-3x4.webp" width="340" alt="dark-studio 主题 3:4 竖版 window-callout 卡片，以数字定位针标注 Oil Studio 关键界面区域">
   &nbsp;&nbsp;&nbsp;
-  <img src="./assets/readme/06b-story-9x16.webp" width="255" alt="warm-paper 主题 9:16 竖屏 before-after 卡片，上下对比原始底图与完整落地页">
+  <img src="./assets/readme/10b-story-9x16.webp" width="255" alt="warm-paper 主题 9:16 竖屏 before-after 卡片，上下对比 Cairn 原始冰川底图与完整落地页">
 </p>
 <p align="center">
-  <sub>左：<code>dark-studio</code> · <code>window-callout</code> · <code>3:4</code> &nbsp;|&nbsp; 右：<code>warm-paper</code> · <code>before-after</code> · <code>9:16</code></sub>
+  <sub>左：<code>dark-studio</code> · <code>window-callout</code> · <code>3:4</code>（Oil Studio） &nbsp;|&nbsp; 右：<code>warm-paper</code> · <code>before-after</code> · <code>9:16</code>（Oil UI · Cairn）</sub>
 </p>
 
 ---
@@ -111,8 +131,8 @@ npx skills add oil-oil/oil-showcase
 
 | 维度 | 支持选项 |
 | --- | --- |
-| **3 套中性主题** | `warm-paper`（暖纸衬线，默认）、`dark-studio`（暗棚哑光无衬线）、`cool-gallery`（冷灰无衬线）。均支持 `displayStyle`（`"serif"` / `"sans"`）覆盖与克制的 `accent` 主题色注入。 |
-| **8 种内置版式** | `layered-hero`、`layered-bento`、`section-assembly`、`module-bento`、`gallery-wall`（`tilted-pages` / `collage`）、`window-callout`、`before-after`、`workflow-steps`；自定义 HTML 单卡可通过 `shoot` 导出。 |
+| **3 套摄影棚布光主题** | `warm-paper`（暖棉纸衬线，默认）、`dark-studio`（深色阳极哑光无衬线）、`cool-gallery`（冷灰建筑哑光无衬线）。内置左上主光、内联 SVG 颗粒质感、高光描边与克制 `accent` 注入。 |
+| **8 种内置版式** | `window-callout`（`split` / `stacked`）、`before-after`（并排 / 上下堆叠 + 光学裁切线）、`workflow-steps`（`row` / `staged`）、`layered-hero`、`layered-bento`、`section-assembly`、`module-bento`、`gallery-wall`；细读版式默认 `0°` 横平竖直保高清（`tilt` 按需开启）。 |
 | **5 种预设画幅** | `16:9`（`@2x` `3200×1800`）、`4:3`（`2880×2160`）、`3:4`（`2160×2880`）、`9:16`（`2160×3840`）、`1:1`（`2400×2400`），并支持 `400–4000` 范围内的自定义 `WxH` 像素视口。 |
 
 ---
