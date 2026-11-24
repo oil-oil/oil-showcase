@@ -1,0 +1,172 @@
+# 设计系统与规格参考
+
+本文件为 [oil-showcase](../SKILL.md) 提供三套中性画板主题令牌、字体层级、文案克制原则、8 种通用版式选型与 `spec.json` 完整字段说明。
+
+## 目录
+
+- [三套中性画板主题令牌](#三套中性画板主题令牌)
+- [产品主题色注入规则](#产品主题色注入规则)
+- [标题风格与字体层级](#标题风格与字体层级)
+- [文案与画面克制纪律](#文案与画面克制纪律)
+- [八种版式原型与比例适配](#八种版式原型与比例适配)
+- [spec.json 规格参考](#specjson-规格参考)
+
+## 三套中性画板主题令牌
+
+画板本身始终保持克制、低饱和度，把视觉重心让给真实产品画面。可在 `spec.json` 顶层或单卡上通过 `theme` 指定（默认 `"warm-paper"`）：
+
+| 令牌 | `warm-paper`（暖纸编辑） | `dark-studio`（暗棚专业） | `cool-gallery`（冷灰建筑） |
+| --- | --- | --- | --- |
+| 默认适配产品 | 品牌官网、内容与消费产品、浅色应用 | 深色音视频剪辑器、IDE、专业桌面工作台 | 原生效率工具、仪表盘、现代 SaaS |
+| `--paper-base` | `#f6f3ec` | `#101114` | `#f2f4f7` |
+| `--paper-bg` | `#fbf9f4 -> #f6f3ec -> #efeae0` 径向柔光 | `#1a1c22 -> #101114 -> #0d0e11` 哑光暗棚 | `#fafbfd -> #f2f4f7 -> #e9edf2` 净灰柔光 |
+| `--ink` | `#1b1c19` | `#f3f4f6` | `#14171d` |
+| `--muted` | `#5d6058` | `#989da8` | `#5d6470` |
+| `--frame-bg` | `#ffffff` | `#17191e`（消除深色截图白边） | `#ffffff` |
+| `--surface-bg` | `#fbfaf7` | `#16181d` | `#f8f9fb` |
+| `--hairline` | `rgba(27, 28, 25, 0.09)` | `rgba(255, 255, 255, 0.10)` | `rgba(20, 23, 29, 0.09)` |
+| `--shadow-card` | `0 22px 48px -18px rgba(24,22,18,0.18)` | `0 28px 60px -20px rgba(0,0,0,0.68)` | `0 22px 48px -18px rgba(15,23,42,0.14)` |
+| 默认 `displayStyle` | `"serif"` | `"sans"` | `"sans"` |
+
+卡片圆角规则：主画幅窗口与 Bento 卡片使用 `14px`–`18px`；紧凑局部切片和分层底板使用 `10px`–`14px`。
+
+## 产品主题色注入规则
+
+画板底色不随产品染色；单张卡片通过 `accent` 传入一个十六进制颜色（例如 `#2563eb`、`#2fbf71`、`#a62639`；留空时默认取当前主题主墨色），且**只允许**出现在极克制的结构标记上：
+
+1. 两位数字序号（`01`、`02`、`03`、`04`）、编号角标与竖屏定位针；
+2. `section-assembly` 与 `window-callout` 的 SVG 虚线连线、端点圆点及带对比光环的锚点；
+3. 主画面眉标左侧小圆点（`• LIVE DEMO · ...`）、`before-after` 的过渡箭头与 `after` 细边强调、`workflow-steps` 的步骤箭头。
+
+禁止用 `accent` 铺满整块画布背景或大面积色块。
+
+## 标题风格与字体层级
+
+内置 OFL 字体位于 `assets/fonts/`，渲染脚本会自动内联为离线样式。可通过顶层或单卡 `displayStyle`（`"serif"` 或 `"sans"`）覆盖主题默认标题风格：
+
+- **衬线展示体（`displayStyle: "serif"`）**：`'Playfair Display', 'Songti SC', 'Noto Serif CJK SC', 'STSong', Georgia, serif`。适合杂志编辑感与品牌叙事；英文 `400` 字重、字距 `-0.025em`，中文 `500` 字重、行高 `1.22`。
+- **现代无衬线展示体（`displayStyle: "sans"`）**：`'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif`。`600` 字重、紧致字距 `-0.032em`（中文 `-0.018em`），在 `dark-studio` 与 `cool-gallery` 下干脆利落。
+- **正文无衬线与等宽体**：正文固定使用 `Inter` + 系统中文无衬线；序号、眉标、对比标签、步骤标签与页脚统一使用 `JetBrains Mono`。
+
+## 文案与画面克制纪律
+
+- **单一文字锚点，不分散堆字**：每张展板只在左上角保留「品牌标 + 一句短主标题」（必要时紧跟 1 行短说明），不在右上角另起装饰标签或分散多处小字；顶栏版式（`window-callout`、`before-after`、`workflow-steps`、`module-bento`）统一单列左对齐，不渲染右上角漂浮眉标。
+- **禁止空洞凑数演示**：每张卡片都必须承载高信息密度的真实产品画面或肉眼立见的价值对比；禁止拿「70% 空白背景 + 几行简单代码」或单纯换浅色/深色皮肤的平淡截图做演示图。
+- **主标题**：中文不超过 12 字，英文不超过 6 词；在左侧栏中可自然换行成 2 行（支持 `\n` 显式断行）。
+- **副标题**：最多 1–2 短行（`19–21px`），紧跟主标题下方左对齐；标题与画面已说清时直接省略，容器自动收起不留空隙。
+- **字号不低于可读下限，冗余说明宁缺毋滥**：在 `1600px` 画布上所有可见文字硬性不低于 `14px`，正文说明、图例、卡片标题与副注渲染在 `15–21px`，确保在 `900px` README 或手机信息流缩略宽度下依然一眼可读；只要标题和截图本身已经说明重点，就直接省略 `caption` 和 `footer`，避免凑数小字。
+- **画面占比**：至少 70%–80% 的画布面积留给真实产品画面与克制呼吸留白。
+- **真放大原则（Legibility First）**：连线放大框（`window-callout`）和局部对比图（`before-after`）的本质是把关键细节放大 **2×–4×**，确保读者在社媒缩略图或 900px 文档列宽下无需点开原图就能读清文字与控件；严禁把整张桌面窗口直接缩成微缩图塞进局部放大框或窄对比栏。
+- **明确禁止**：装饰贴纸、爆炸角标、空洞营销徽章（如 `New!`、`AI Powered`）、用代码硬画的假产品截图。
+
+## 八种版式原型与比例适配
+
+### 八种版式如何选择
+
+| 版式 `layout` | 适用叙事 | 核心结构 |
+| --- | --- | --- |
+| `layered-hero` | 讲清“底图 + 界面 + 透明前景”等 2–3 层叠加如何合成主视觉 | 左栏标题/斜叠层卡/底部图例，右侧倾斜或端正大主图与眉标 |
+| `layered-bento` | 同时展示左下分层原理与右侧同一产品的 2–6 个真实模块 | 左栏标题/分层叠卡/底部图例，右侧 2 列 Bento 网格 |
+| `section-assembly` | 拆解竖向整页或长图由哪些局部素材/模块拼装而成 | 左栏标题与编号摘要，中栏 2–5 组切片（支持单图或双图并排），右栏竖向长图 + SVG 虚线精准连线 |
+| `module-bento` | 平等陈列 2–6 个高质量真实功能模块或不同状态界面 | 顶部品牌与标题，下方宽敞 3×2、2×2 或 2+3 网格，支持 `accent` 编号与标签 |
+| `gallery-wall` | 展示多页完整网站、多屏 App 或多风格视觉墙 | `tilted-pages`（左栏标题 + 右侧 2–4 张 `-4deg` 倾斜整页）或 `collage`（倾斜画廊拼接墙，可选底部透明前景叠加） |
+| `window-callout` | 解剖桌面窗口、剪辑工作台、仪表盘或复杂界面，并把 2–4 处细节真放大 | 横版默认左右分栏（`arrangement: "split"`）：左侧大尺寸主窗口自动贴合原生比例 + 右侧 2–4 张宽幅放大卡与水平曲线虚线；超宽条状界面可切 `arrangement: "stacked"`；`3:4`/`9:16` 竖版顶部主窗口配高对比编号锚点、下方横排放大卡 |
+| `before-after` | 直观对比开启前/后、AI 处理前后、改版前后或深浅双态 | 顶部标题栏，双侧等大画框（竖版自动上下堆叠），外置克制胶囊标签、居中过渡箭头桥接，并对 `after` 施加克制主题细边 |
+| `workflow-steps` | 展示 3–4 步连贯产品工作流（如录制→剪辑→导出、采集→整理→分享） | 顶部标题栏，横版 3–4 张带细箭头串联的图文步骤卡；`3:4` 三步自动转为竖向横卡串联、四步与 `1:1` 转为 2×2 网格 |
+
+### 画幅比例与自动适配
+
+默认 `--scale 2` 以 2 倍像素密度导出清晰成图：
+
+| `ratio` | CSS 视口 | `@2x` 成图尺寸 | 典型场景与自动适配策略 |
+| --- | --- | --- | --- |
+| `16:9` | `1600×900` | `3200×1800` | X/Twitter、GitHub 封面、发布长图；标准横版构图 |
+| `4:3` | `1440×1080` | `2880×2160` | Product Hunt 图集、长文插图；沿用横版并增加纵向呼吸感 |
+| `3:4` | `1080×1440` | `2160×2880` | 小红书、移动端竖屏组图；自动切换为竖排、上下对比或高对比数字定位针 |
+| `9:16` | `1080×1920` | `2160×3840` | 手机全屏竖版（视频号/抖音/Reels/Stories 封面与拆解图）；`workflow-steps` 3–4 步全部竖排串联、`window-callout` 2–3 项改为横卡竖排、`before-after` 宽敞上下对比 |
+| `1:1` | `1200×1200` | `2400×2400` | 方图社媒卡片与缩略展示；自动切换为紧凑上文下图或 2 列平衡网格 |
+
+也支持自定义像素视口字符串，例如 `"ratio": "1500x1000"`（宽高须在 `400`–`4000` 之间）。
+
+## spec.json 规格参考
+
+顶层结构支持默认 `brand`、`theme`、`displayStyle` 与必填 `cards` 数组：
+
+```json
+{
+  "theme": "dark-studio",
+  "displayStyle": "sans",
+  "brand": {
+    "name": "Studio App",
+    "tag": "desktop workbench",
+    "icon": "assets/logo.png"
+  },
+  "cards": [
+    {
+      "id": "01-window-callout",
+      "layout": "window-callout",
+      "ratio": "16:9",
+      "accent": "#38bdf8",
+      "title": "Everything on one timeline.",
+      "subtitle": "Inspect waveforms, auto-cuts, and subtitle tracks without switching windows.",
+      "window": { "image": "shots/main-window.png", "label": "MAIN WORKSPACE" },
+      "callouts": [
+        { "title": "Speech timeline", "caption": "Silence segments detected locally", "image": "shots/zoom-timeline.png", "targetX": 26, "targetY": 76 },
+        { "title": "Inspector panel", "caption": "Real-time padding and cursor zoom", "image": "shots/zoom-inspector.png", "targetX": 82, "targetY": 44 },
+        { "title": "Subtitle track", "caption": "Word-level alignment preview", "image": "shots/zoom-captions.png", "targetX": 54, "targetY": 82 }
+      ]
+    }
+  ]
+}
+```
+
+### 通用卡片字段
+
+- `id`（必填）：唯一文件名标识，仅允许字母、数字、连字符与下划线。
+- `layout`（必填）：八种版式名称之一。
+- `theme`（可选，继承顶层，默认 `"warm-paper"`）：`"warm-paper"`、`"dark-studio"` 或 `"cool-gallery"`。
+- `displayStyle`（可选，继承顶层或按主题默认）：`"serif"` 或 `"sans"`。
+- `ratio`（可选，默认 `"16:9"`）：`"16:9"`、`"4:3"`、`"3:4"`、`"9:16"`、`"1:1"` 或 `"WxH"`。
+- `accent`（可选，默认取当前主题主墨色）：十六进制主题色，如 `"#38bdf8"`。
+- `brand`（可选）：单卡覆盖顶层 `brand`；设为 `null` 隐藏品牌条。
+- `title`（除全出血 `collage` 外必填）：主标题，支持 `\n` 换行。
+- `subtitle`（可选）：两行内副标题。
+- `eyebrow`（可选）：仅在 `layered-hero`、`section-assembly`、`layered-bento` 的右侧实景主图正上方渲染（标注真实页面名称，如 `• LIVE WEB DEMO · CAIRN`）；顶栏版式（`window-callout`、`before-after`、`workflow-steps`、`module-bento`）为保持单一左对齐文字锚点，不渲染右上角漂浮眉标。
+- `footer`（可选）：等宽页脚元信息，支持 `\n` 换行，八种版式均支持渲染。
+
+### 通用图片槽位参数与截图比例建议
+
+所有版式的图片对象（`hero`、`layers[]`、`items[]`/`pages[]`、`showcase`、`sections[]` 及 `sections[].images[]` 对象项、`window`、`callouts[]`、`before`/`after`、`steps[]`）均统一支持三个可选参数：
+
+- `fit`（默认 `"cover"`）：`"cover"` 铺满裁切，或 `"contain"` 完整保留画面不裁边。
+- `position`（默认 `"top center"`，透明前景层默认 `"center bottom"`，切片/标注/对比默认 `"center"`）：标准 CSS `object-position`。
+- `bg`（可选）：容器底色（支持 `#RGB`/`#RRGGBB`/`#RRGGBBAA`、`rgb()`/`rgba()`、`transparent`）。配合 `fit: "contain"` 时填入截图本身底色可无缝融合。
+
+| 版式槽位 | 建议抓图比例 | 适用技巧 |
+| --- | --- | --- |
+| `layered-hero` 主图与层卡 | `16:10`（约 `1440×900`） | 深色窗口在 `dark-studio` 下默认暗底无缝贴合 |
+| `layered-bento` 右侧 4 格 / 6 格 | 4 格约 `4:3`，6 格约 `16:10` | 按功能区裁切，不硬塞整屏微缩图 |
+| `section-assembly` 切片与右栏长图 | 切片约 `16:7`–`16:9`，右栏约 `9:16`–`3:5` | 右栏用 `--full-page` 抓长图配 `position: "top center"` |
+| `module-bento` 模块卡 | 约 `16:10`（`4:3`–`16:9` 皆宜） | 窄面板可用 `position: "top left"` 或 `contain` + `bg` |
+| `gallery-wall` 整页 / 拼接墙 | `tilted-pages` 约 `2:5`；`collage` 约 `16:10` | 可按单图分别指定 `bg` 与 `position` |
+| `window-callout` 主窗口与放大卡 | 主窗口自动贴合截图原生比例（默认 `contain` 无空边）；默认左右 `split` 右侧放大卡：3 格约 `2.8:1`–`3:1` 宽条、4 格约 `3.5:1`–`4:1` 宽条；`3:4`/`9:16` 横排放大卡约 `2:1`（`3:4` 4 格约 `16:10`） | 放大卡必须放 2×–4× 局部裁切细节，`(targetX, targetY)` 按主窗口**实际渲染图片内容区**计算 |
+| `before-after` 双对比画框 | 横版各约 `4:3`–`16:10`；竖版各约 `16:10` | 两张图尽量同尺寸、同视口截取，确保对比公平直观 |
+| `workflow-steps` 步骤卡画面 | `16:9` 下 3 步约 `1:1`、4 步约 `2:3`–`3:4` 竖构图（`~0.68:1`）；`3:4` 三步横卡约 `4:3` | 每步只展示一个关键界面状态，4 步横版优先使用竖向或方正局部裁切 |
+
+### 各版式专用字段
+
+1. **`layered-hero`**：`layers`（2–3 项，含 `image`、`label`、可选 `transparent` 及槽位参数）、`showIndexBadges`（默认 `false`）、`hero`（含 `image`、可选 `tilt` 及槽位参数）。
+2. **`layered-bento`**：`layers`（2–3 项）、`showIndexBadges`（默认 `true`）、`items`（2–6 项，含 `image`、可选 `label` 及槽位参数）。
+3. **`section-assembly`**：`sections`（2–5 项，含 `caption`、`summary`、`targetY`、`image` 或 `images` 路径/对象数组、`ratios` 及段级槽位参数）、`showcase`（含 `image`、可选 `tilt` 及槽位参数）。
+4. **`module-bento`**：`items`（2–6 项，含 `image`、可选 `index`、`label`/`caption` 及槽位参数）、`columns`（可选 `2` 或 `3`）。
+5. **`gallery-wall`**：`variant`（`"tilted-pages"` 或 `"collage"`）、`items`（也接受别名 `pages`）、`foreground`（可选，仅 `collage` 底部透明前景层）。
+6. **`window-callout`**：
+   - `arrangement`（可选，默认 `"split"`）：横版可选 `"split"`（左大主窗口 + 右侧放大卡堆叠 + 水平虚线，推荐）或 `"stacked"`（上主窗口 + 下排卡片 + 纵向虚线，仅用于超宽条状界面）。
+   - `window`（必填）：`{ "image": "...", "label": "可选窗口标签", "fit": "contain", "position": "center", "bg": "..." }`（默认 `fit: "contain"` 并自动收缩外框贴合截图原生比例，零空边）。
+   - `callouts`（必填，2–4 项）：每项含 `image`、`title`、`targetX`（`0`–`100`，相对主图实际渲染宽度）、`targetY`（`0`–`100`，相对主图实际渲染高度），可选 `targetW` / `targetH`（`1`–`100`，在主图目标区域绘制克制半透明聚焦框）、`index`（默认 `"01"`..）、`tag`（右上等宽小标签）、`caption`（简短说明）及 `fit`/`position`/`bg`。
+7. **`before-after`**：
+   - `before`（必填）：`{ "label": "BEFORE", "image": "...", "caption": "可选 1 行说明", "fit": "cover", "position": "center", "bg": "..." }`。
+   - `after`（必填）：同上结构（默认 `label: "AFTER"`），自动附带克制主题色细边与状态点。
+   - `compareNote`（可选）：右下角等宽对比注释。
+8. **`workflow-steps`**：
+   - `steps`（必填，3–4 项）：每项含 `image`、`title`，可选 `index`（默认 `"01"`..）、`caption`（1–2 行说明）及 `fit`/`position`/`bg`。
