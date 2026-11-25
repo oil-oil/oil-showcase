@@ -210,6 +210,19 @@ python3 -W error -m unittest discover -s skills/oil-showcase/tests -v
 - **Local files only:** Reads only the spec JSON, local screenshots/HTML you pass, and bundled fonts; writes outputs strictly under `--out-dir` or `--out` (refusing to overwrite input images).
 - **No credentials or telemetry:** Requires no login, API keys, or analytics, and does not access browser profiles or credential stores.
 
+
+---
+
+<p align="center">
+  <a href="https://studio.oiloil.org/en/?utm_source=github&utm_medium=readme&utm_campaign=oil-showcase">
+    <img src="https://raw.githubusercontent.com/oil-oil/oil-studio-skill/main/assets/readme/creator-card.en.png" width="100%" alt="Oil Studio: Native Mac screen recorder and video editor for creators">
+  </a>
+</p>
+
+<p align="center">
+  <strong><a href="https://studio.oiloil.org/en/?utm_source=github&utm_medium=readme&utm_campaign=oil-showcase">Record, auto-zoom, cut retakes by text, and caption in one Mac app → Explore Oil Studio</a></strong>
+</p>
+
 ---
 
 ## License
