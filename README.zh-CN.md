@@ -210,6 +210,19 @@ python3 -W error -m unittest discover -s skills/oil-showcase/tests -v
 - **仅读写指定路径**：脚本只读取你提供的规格 JSON、截图/HTML 与内置字体，只向 `--out-dir` 或 `--out` 写入产物，并拒绝覆盖输入原图。
 - **无凭据、无遥测**：不登录账号、不读取浏览器用户配置或凭据目录，也不上报任何统计数据。
 
+
+---
+
+<p align="center">
+  <a href="https://studio.oiloil.org/?utm_source=github&utm_medium=readme&utm_campaign=oil-showcase">
+    <img src="https://raw.githubusercontent.com/oil-oil/oil-studio-skill/main/assets/readme/creator-card.png" width="100%" alt="Oil Studio：给自媒体创作者的 Mac 录屏与口播精剪软件">
+  </a>
+</p>
+
+<p align="center">
+  <strong><a href="https://studio.oiloil.org/?utm_source=github&utm_medium=readme&utm_campaign=oil-showcase">录屏、自动缩放、按文字剪口播、加字幕，一个 Mac App 搞定 → 了解 Oil Studio</a></strong>
+</p>
+
 ---
 
 ## 许可
