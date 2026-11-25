@@ -16,9 +16,9 @@ Turn real product screenshots—websites, matte dark desktop workbenches, native
 
 ---
 
-## Showcase — All 8 Built-in Layouts
+## Showcase — 5 Themes & 11 Built-in Layouts
 
-Every card below was rendered locally by `oil-showcase` from real **Oil Studio** and **Oil UI** captures across all 8 layouts and all 3 studio-lit neutral themes (`warm-paper`, `dark-studio`, `cool-gallery`). Detail-reading layouts stay strictly upright (`0°`) for razor-sharp UI text, paired with pure-code studio lighting, fine SVG grain, and behind-the-card occluded typography.
+Every card below was rendered locally by `oil-showcase` from real **Oil Studio** and **Oil UI** captures across all 11 layouts and all 5 pure-code themes (`warm-paper`, `dark-studio`, `cool-gallery`, `wallpaper-stage`, `blueprint-grid`). Detail-reading layouts stay strictly upright (`0°`) for razor-sharp UI text, paired with pure-code studio lighting, fine SVG grain, and behind-the-card occluded typography.
 
 <p align="center">
   <img src="./assets/readme/01-window-callout-studio.webp" width="100%" alt="dark-studio theme window-callout layout showing the Oil Studio macOS editor with upright razor-sharp framing, occluded 01-03 numerals, and glowing coral leader lines">
@@ -28,6 +28,36 @@ Every card below was rendered locally by `oil-showcase` from real **Oil Studio**
 </p>
 
 <table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/11-split-compare-cairn.webp" width="100%" alt="cool-gallery theme split-compare layout splitting raw Cairn glacier base plate and live interactive treasury UI at a pixel-aligned 50 percent divider">
+      <br><sub><code>cool-gallery</code> · <code>split-compare</code> · <code>16:9</code> — Pixel-aligned single-frame split (Oil UI · Cairn)</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/12-device-pair-aquarelle.webp" width="100%" alt="warm-paper theme device-pair layout pairing upright Aquarelle desktop web capture with an overlapping dark-titanium iOS mobile frame">
+      <br><sub><code>warm-paper</code> · <code>device-pair</code> · <code>16:9</code> — Desktop + mobile responsive pair (Oil UI · Aquarelle)</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/13-detail-loupe-studio.webp" width="100%" alt="dark-studio theme single-callout detail loupe mode highlighting the Oil Studio click-follow timeline with an SVG cutout focus mask and 2.4x loupe card">
+      <br><sub><code>dark-studio</code> · <code>window-callout</code> (1-point loupe) · <code>16:9</code> — Cutout focus mask &amp; 2.4× detail loupe (Oil Studio)</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/14-changelog-studio.webp" width="100%" alt="cool-gallery theme changelog-card layout presenting Oil Studio v0.4 release numeral, three numbered highlights, and flagship auto clean-up screenshot">
+      <br><sub><code>cool-gallery</code> · <code>changelog-card</code> · <code>16:9</code> — Release announcement &amp; highlights (Oil Studio v0.4)</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/15-wallpaper-stage-studio.webp" width="100%" alt="wallpaper-stage theme 0-callout window stage framing Oil Studio inside a frosted translucent glass bezel over a pure-code twilight plum and dusk rose mesh">
+      <br><sub><code>wallpaper-stage</code> · <code>window-callout</code> (stage) · <code>16:9</code> — Pure-code twilight mesh &amp; glass bezel (Oil Studio)</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/16-blueprint-grid-plinth.webp" width="100%" alt="blueprint-grid theme CAD callout layout framing Plinth on a 40px architectural drafting sheet with registration crosshairs and cobalt orthogonal leader lines">
+      <br><sub><code>blueprint-grid</code> · <code>window-callout</code> (CAD) · <code>16:9</code> — Drafting grid &amp; orthogonal spec leaders (Oil UI · Plinth)</sub>
+    </td>
+  </tr>
   <tr>
     <td width="50%" valign="top">
       <img src="./assets/readme/02-before-after-cool.webp" width="100%" alt="cool-gallery theme side-by-side before-after layout comparing raw Helixa X-ray specimen art against the live protein folding hero">
@@ -131,8 +161,8 @@ Full Agent instructions and JSON spec fields: [SKILL.md](./skills/oil-showcase/S
 
 | Dimension | Options |
 | --- | --- |
-| **3 Studio-Lit Themes** | `warm-paper` (cotton matte serif default), `dark-studio` (anodized dark sans), `cool-gallery` (architectural light gray sans). Built-in directional key light, inline SVG grain, specular rim highlights, and restrained `accent` injection. |
-| **8 Built-in Layouts** | `window-callout` (`split` / `stacked`), `before-after` (`side-by-side` / `stacked` + optical trim hairline), `workflow-steps` (`row` / `staged`), `layered-hero`, `layered-bento`, `section-assembly`, `module-bento`, `gallery-wall`. Upright `0°` by default on detail-reading layouts (`tilt` opt-in). |
+| **5 Pure-Code Themes** | `warm-paper` (cotton matte serif), `dark-studio` (anodized dark sans), `cool-gallery` (architectural light gray sans), `wallpaper-stage` (atmospheric twilight/ocean/sunset/emerald mesh + frosted glass bezel), `blueprint-grid` (`#F3F5F8` drafting grid + registration crosshairs + coordinate ticks). |
+| **11 Built-in Layouts** | `split-compare`, `device-pair`, `changelog-card`, `window-callout` (0-callout stage / 1-point detail loupe / 2–4 `split` or `stacked` / `blueprint-grid` CAD leaders), `before-after` (`side-by-side` / `stacked` + optical trim hairline), `workflow-steps` (`row` / `staged`), `layered-hero`, `layered-bento`, `section-assembly`, `module-bento`, `gallery-wall`. Upright `0°` by default on detail-reading layouts. |
 | **5 Aspect Ratios** | `16:9` (`3200×1800` @2x), `4:3` (`2880×2160`), `3:4` (`2160×2880`), `9:16` (`2160×3840`), `1:1` (`2400×2400`), plus custom `WxH` viewports (`400–4000` CSS px). |
 
 ---

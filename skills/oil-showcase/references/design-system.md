@@ -1,35 +1,32 @@
 # 设计系统与规格参考
 
-本文件为 [oil-showcase](../SKILL.md) 提供三套中性画板主题令牌、字体层级、文案克制原则、8 种通用版式选型与 `spec.json` 完整字段说明。
+本文件为 [oil-showcase](../SKILL.md) 提供五套画板主题令牌、字体层级、文案克制原则、11 种通用版式选型与 `spec.json` 完整字段说明。
 
 ## 目录
 
-- [三套中性画板主题令牌](#三套中性画板主题令牌)
+- [五套画板主题令牌](#五套画板主题令牌)
 - [产品主题色注入规则](#产品主题色注入规则)
 - [标题风格与字体层级](#标题风格与字体层级)
 - [文案与画面克制纪律](#文案与画面克制纪律)
-- [八种版式原型与比例适配](#八种版式原型与比例适配)
+- [十一种版式原型与比例适配](#十一种版式原型与比例适配)
 - [spec.json 规格参考](#specjson-规格参考)
 
-## 三套中性画板主题令牌
+## 五套画板主题令牌
 
-画板本身始终保持克制、低饱和度，把视觉重心让给真实产品画面。可在 `spec.json` 顶层或单卡上通过 `theme` 指定（默认 `"warm-paper"`）：
+画板本身始终保持克制与层次感，把视觉重心让给真实产品画面。可在 `spec.json` 顶层或单卡上通过 `theme` 指定（默认 `"warm-paper"`）：
 
-| 令牌 | `warm-paper`（暖纸编辑） | `dark-studio`（暗棚专业） | `cool-gallery`（冷灰建筑） |
-| --- | --- | --- | --- |
-| 默认适配产品 | 品牌官网、内容与消费产品、浅色应用 | 深色音视频剪辑器、IDE、专业桌面工作台 | 原生效率工具、仪表盘、现代 SaaS |
-| `--paper-base` | `#f5f1e8` | `#0c0e11` | `#eef1f5` |
-| `--paper-bg` | `#faf7f0 -> #f4efe4 -> #eae3d5` + 左上日光漫射 | `#11151b -> #0c0e11 -> #090c10` + 左上冷调主光 | `#f5f7fa -> #eef1f5 -> #e4e9f1` + 左上天光漫射 |
-| 纯代码颗粒质感 | SVG `feTurbulence` `0.88`（暖棉纸 `multiply 0.036`） | SVG `feTurbulence` `0.82`（阳极暗棚 `overlay 0.038`） | SVG `feTurbulence` `0.86`（细建筑哑光 `multiply 0.032`） |
-| `--ink` | `#1b1c19` | `#f5f7fa` | `#0b1220` |
-| `--muted` | `#4a4d46` | `#98a2b2` | `#526075` |
-| `--frame-bg` | `#ffffff` | `#17191e`（消除深色截图白边） | `#ffffff` |
-| `--surface-bg` | `#fbfaf7` | `#15181f` | `#f8fafc` |
-| `--hairline` | `rgba(27, 28, 25, 0.10)` | `rgba(255, 255, 255, 0.12)` | `rgba(15, 23, 42, 0.11)` |
-| 方向性投影 + 光学高光边 | 左上主光斜向投影 + `inset 0 1.2px 0` 高光沿 | 深邃方向投影 + `rgba(255,255,255,0.28)` 镜面顶沿 | 建筑感方向投影 + `rgba(255,255,255,0.46)` 锐利顶沿 |
-| 默认 `displayStyle` | `"serif"` | `"sans"` | `"sans"` |
+| 令牌 | `warm-paper`（暖纸编辑） | `dark-studio`（暗棚专业） | `cool-gallery`（冷灰建筑） | `wallpaper-stage`（壁纸舞台） | `blueprint-grid`（蓝图制图） |
+| --- | --- | --- | --- | --- | --- |
+| 默认适配产品 | 品牌官网、内容与消费产品、浅色应用 | 深色剪辑器、IDE、专业桌面工作台 | 原生效率工具、仪表盘、现代 SaaS | 旗舰桌面单窗主图、社媒氛围发布卡 | 技术架构解剖、设计系统、空间工作流 |
+| `--paper-base` | `#f5f1e8` | `#0c0e11` | `#eef1f5` | `#131126`（纯代码多层氛围渐变网格） | `#f3f5f8`（40px/160px 正交制图网格） |
+| 氛围与材质细节 | 左上日光漫射 + 暖棉纸颗粒 `0.88` | 左上冷调主光 + 阳极哑光颗粒 `0.82` | 左上天光漫射 + 建筑哑光颗粒 `0.86` | `twilight`/`ocean`/`sunset`/`emerald` 渐变网格 + 8px 磨砂玻璃外框 + 胶片颗粒 `0.80` | 制图外框 + 160px `+` 套准十字标 + 四周 `>=14px` 等宽坐标刻度 + 制图纸颗粒 `0.88` |
+| `--ink` / `--muted` | `#1b1c19` / `#4a4d46` | `#f5f7fa` / `#98a2b2` | `#0b1220` / `#526075` | `#ffffff` / `rgba(244,240,252,0.76)` | `#0b1220` / `#475569` |
+| `--frame-bg` / `--surface-bg` | `#ffffff` / `#fbfaf7` | `#17191e` / `#15181f` | `#ffffff` / `#f8fafc` | `#0e0f11` / `rgba(20,18,36,0.84)` | `#ffffff` / `#ffffff` |
+| 默认 `displayStyle` / `accent` | `"serif"` / `#1b1c19` | `"sans"` / `#f3f4f6` | `"sans"` / `#14171d` | `"sans"` / `#eb8666` | `"sans"` / `#1d4ed8` |
 
-卡片圆角规则：主画幅窗口与 Bento 卡片使用 `14px`–`18px`；紧凑局部切片和分层底板使用 `10px`–`14px`。所有浮起画框统一自带纯代码左上主光斜向漫射、柔和主体反光与 1px 顶部光学高光沿，全程零外网请求、零 AI 生图。
+- `wallpaper-stage` 支持顶层或单卡 `stagePalette`：`"twilight"`（默认暮色梅紫/深靛/暖琥珀）、`"ocean"`（深海青蓝）、`"sunset"`（落日玫橙）、`"emerald"`（深林翡翠）。
+- `blueprint-grid` 支持单卡 `gridLabel`（右上角坐标铭文，默认 `"SCALE 2:1 · GRID 40PX"`），并自动绘制 `40px`/`160px` 网格、套准十字标与底边 `X·01`–`X·05` 等宽坐标。
+- 卡片圆角规则：主画幅窗口与 Bento 卡片使用 `14px`–`18px`（`blueprint-grid` 标本框使用锐利 `10px`，`wallpaper-stage` 玻璃外框 `22px`）；所有浮起画框自带纯代码方向性投影、柔和主体反光与 1px 顶部光学高光沿，全程零外网请求、零 AI 生图。
 
 ## 产品主题色注入规则
 
@@ -69,9 +66,9 @@
 - **真放大原则（Legibility First）**：连线放大框（`window-callout`）和局部对比图（`before-after`）的本质是把关键细节放大 **2×–4×**，确保读者在社媒缩略图或 900px 文档列宽下无需点开原图就能读清文字与控件；严禁把整张桌面窗口直接缩成微缩图塞进局部放大框或窄对比栏。
 - **明确禁止**：装饰贴纸、爆炸角标、空洞营销徽章（如 `New!`、`AI Powered`）、用代码硬画的假产品截图。
 
-## 八种版式原型与比例适配
+## 十一种版式原型与比例适配
 
-### 八种版式如何选择
+### 十一种版式如何选择
 
 | 版式 `layout` | 适用叙事 | 核心结构 |
 | --- | --- | --- |
@@ -80,9 +77,12 @@
 | `section-assembly` | 拆解竖向整页或长图由哪些局部素材/模块拼装而成 | 左栏标题与编号摘要，中栏 2–5 组切片（支持单图或双图并排），右栏竖向长图 + SVG 虚线精准连线 |
 | `module-bento` | 平等陈列 2–6 个高质量真实功能模块或不同状态界面 | 顶部品牌与标题，下方宽敞 3×2、2×2 或 2+3 网格，支持 `accent` 编号与标签 |
 | `gallery-wall` | 展示多页完整网站、多屏 App 或多风格视觉墙 | `tilted-pages`（左栏标题 + 右侧 2–4 张规整多页，默认 `0deg`，可显式加 `tilt: true`）或 `collage`（规整画廊拼接墙，可选底部透明前景叠加） |
-| `window-callout` | 解剖桌面窗口、剪辑工作台、仪表盘或复杂界面，并把 2–4 处细节真放大 | 横版默认全高左右分栏（`arrangement: "split"`）：左侧标题 + 端正高清主窗口（平面内聚焦框零漂移，可选 `tilt: true`）+ 右侧 2–4 张卡片后遮挡编号（`01`–`04`）放大面板与发光虚线标线；超宽条状界面可切 `arrangement: "stacked"`；`3:4`/`9:16` 竖版顶部主窗口配高对比定位针、下方横排放大卡 |
+| `window-callout` | 居中单窗发布、单点局部聚光放大镜、多点放大解剖或工程蓝图标注 | **0 标注**：居中端正大窗口舞台（配 `wallpaper-stage` 磨砂玻璃外框与遮挡 `stageLabel`）；**1 标注**：自动切单点聚光放大镜（SVG 聚光挖空遮罩 + 一条发光虚线 + `2.4×` 悬浮放大卡与规格底栏）；**`blueprint-grid` + 2–4 标注**：CAD 正交折线虚线连至右侧细线规格块与尺寸标尺；**其他主题 + 2–4 标注**：左右分栏 `split`（或上下 `stacked`）放大面板 |
 | `before-after` | 直观对比开启前/后、AI 处理前后、改版前后或深浅双态 | 顶部标题栏，横版端正 `0deg` 尺度对比（左卡略退缩、右卡放大提亮，可选 `tilt: true`），卡片后遮挡雕塑字（`BEFORE`/`AFTER` 或 `对比前`/`对比后`）配极简无框光束箭头；`stacked` 配合 `after.widthPercent < 100` 渲染发光竖向光学裁切线与无框大号 `deltaBadge` |
 | `workflow-steps` | 展示 3–4 步连贯产品工作流（如录制→剪辑→导出、采集→整理→分享） | 默认 `style: "row"`（横版 3–4 张端正对齐卡配背后遮挡序号 `01`–`04` 与细箭头，`3:4`/`9:16` 自动竖排或 2×2）；可选 `style: "staged"`（左侧里程碑栏 + 右侧非对称 3D 层次舞台与背后大号序号，支持 `tilt: false` 切平） |
+| `split-compare` | 同视口像素级严密对齐的前后分屏对比（底图→成品、浅色→深色、原图→精修） | 单一全宽 `0deg` 端正画框 + CSS `clip-path` 精确中轴分割（默认 `splitPercent: 50`）+ 发光细中线与极简 `< >` 圆形滑柄 + 左右背景色温轻移 + 卡片后遮挡 `BEFORE`/`AFTER` |
+| `device-pair` | 展示同一产品在桌面端与移动端的响应式适配 | 左侧大尺寸 `0deg` 桌面端窗口 + 右下角前景叠加暗钛金属 `0deg` 手机框（灵动岛 + 底部手势条 + 真实接触投影），配背后遮挡 `WEB`/`iOS` 雕塑字；竖版自动改为上桌面下手机叠层 |
+| `changelog-card` | 版本发布公告、功能更新总览卡 | 左侧约 38% 栏位展示雕塑感大号版本号（如 `v0.4`，小数点着主题色）+ 细线标题与 2–4 条编号版本亮点，右侧约 58% 端正旗舰截图配背后遮挡 `RELEASE`/`版本更新` 与底部双侧元信息；竖版自动纵向堆叠 |
 
 ### 画幅比例与自动适配
 
@@ -133,8 +133,10 @@
 ### 通用卡片字段
 
 - `id`（必填）：唯一文件名标识，须匹配 `^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$`（1–80 字符，以字母或数字开头，允许字母、数字、`.`、`_`、`-`）。
-- `layout`（必填）：八种版式名称之一。
-- `theme`（可选，继承顶层，默认 `"warm-paper"`）：`"warm-paper"`、`"dark-studio"` 或 `"cool-gallery"`。
+- `layout`（必填）：十一种版式名称之一。
+- `theme`（可选，继承顶层，默认 `"warm-paper"`）：`"warm-paper"`、`"dark-studio"`、`"cool-gallery"`、`"wallpaper-stage"` 或 `"blueprint-grid"`。
+- `stagePalette`（可选，仅 `wallpaper-stage` 生效，默认 `"twilight"`）：`"twilight"`、`"ocean"`、`"sunset"` 或 `"emerald"`。
+- `gridLabel`（可选，仅 `blueprint-grid` 生效，默认 `"SCALE 2:1 · GRID 40PX"`）：右上角等宽工程坐标铭文。
 - `displayStyle`（可选，继承顶层或按主题默认）：`"serif"` 或 `"sans"`。
 - `lang`（可选，继承顶层，默认按卡片内容自动检测）：`"zh"` 或 `"en"`，用于显式控制自动默认标签（如 `对比前`/`对比后` 与 `BEFORE`/`AFTER`）和 HTML `lang` 属性。
 - `ratio`（可选，默认 `"16:9"`）：`"16:9"`、`"4:3"`、`"3:4"`、`"9:16"`、`"1:1"` 或 `"WxH"`。
@@ -173,10 +175,14 @@
 4. **`module-bento`**：`items`（2–6 项，含 `image`、可选 `index`、`label`/`caption` 及槽位参数）、`columns`（可选 `2` 或 `3`）。
 5. **`gallery-wall`**：`variant`（`"tilted-pages"` 或 `"collage"`）、`tilt`（可选，默认 `false`）、`items`（也接受别名 `pages`）、`foreground`（可选，仅 `collage` 底部透明前景层）。
 6. **`window-callout`**：
-   - `arrangement`（可选，默认 `"split"`）：横版可选 `"split"`（左标题+高清主窗口 + 右侧全高放大卡堆叠与发光虚线，推荐）或 `"stacked"`（上主窗口 + 下排卡片 + 纵向虚线，仅用于超宽条状界面）。
-   - `tilt`（可选，默认 `false`）：默认端正 `0deg` 保持文字锐利；设为 `true` 时为主窗口启用微妙 3D 透视角度，聚焦框随窗口平面精确投影，标线零漂移。
-   - `window`（必填）：`{ "image": "...", "label": "可选窗口标签", "fit": "contain", "position": "center", "bg": "..." }`（默认 `fit: "contain"` 并自动收缩外框贴合截图原生比例，零空边）。
-   - `callouts`（必填，2–4 项）：每项含 `image`、`title`、`targetX`（`0`–`100`，相对主图实际渲染宽度）、`targetY`（`0`–`100`，相对主图实际渲染高度），可选 `targetW` / `targetH`（`1`–`100`，在主图平面内绘制发光聚焦框）、`index`（默认 `"01"`..，渲染为卡片后遮挡大号雕塑字）、`tag`（等宽副标签）、`caption`（简短副说明）及 `fit`/`position`/`bg`。
+   - `mode`（可选，默认 `"auto"`）：`"auto"`、`"stage"`、`"loupe"`、`"split"`、`"stacked"` 或 `"blueprint"`。自动模式下：`0` 个 `callouts` 进居中舞台（`stage`）；`1` 个 `callouts` 进单点聚光放大镜（`loupe`）；`blueprint-grid` 主题下 `2–4` 个 `callouts` 进工程正交标注（`blueprint`）；其余 `2–4` 个 `callouts` 走标准 `split`/`stacked`。
+   - `arrangement`（可选，默认 `"split"`）：标准多标注模式可选 `"split"` 或 `"stacked"`。
+   - `stageLabel`（可选）：`stage`（如 `"STAGE"`）或 `blueprint`（默认 `"SPEC 01"`）模式下窗口背后的遮挡雕塑字。
+   - `viewportLabel`（可选）：`blueprint` 模式下标本框下方的等宽尺寸标尺文字（如 `"VIEWPORT 1440×900"`）。
+   - `specs`（可选，最多 5 项）：`blueprint` 模式右下角规格表，每项 `{ "label": "...", "value": "..." }`。
+   - `tilt`（可选，默认 `false`）：默认端正 `0deg` 保持文字锐利；标准模式下设为 `true` 时为主窗口启用微妙 3D 透视角度。
+   - `window`（必填）：`{ "image": "...", "label": "可选窗口标签", "fit": "contain", "position": "center", "bg": "..." }`。
+   - `callouts`（可选，0–4 项）：每项含 `title`、`targetX`、`targetY`、可选 `targetW`/`targetH`、`index`（默认 `"01"`..）、`eyebrow`（单点放大镜眉标或蓝图编号前缀如 `"A·01 · CONTOUR SURFACE"`）、`tag`、`caption`（支持别名 `desc`）、`specs`（单点放大镜卡片底栏规格 `[{label, value}]`）、`image`（`blueprint` 模式可省略）及 `fit`/`position`/`bg`。
 7. **`before-after`**：
    - `orientation`（可选）：`"side-by-side"`（横版/方图默认）或 `"stacked"`（竖版默认；横版 `16:9`/`4:3` 显式设为 `"stacked"` 时上下全宽对比，适合横向时间轴、波形与宽幅长条）。
    - `tilt`（可选，默认 `false`）：默认端正 `0deg` 并保持左右尺度与光影反差；设为 `true` 时开启微妙建筑倾斜。
@@ -187,3 +193,15 @@
 8. **`workflow-steps`**：
    - `style`（可选，默认 `"row"`）：`"row"`（规整横排/竖排步骤卡配卡片后遮挡序号 `01`–`04`）或 `"staged"`（横版左侧里程碑栏 + 右侧非对称 3D 层次舞台与背后遮挡大号序号，默认 `tilt: true`，支持 `tilt: false` 切平）。
    - `steps`（必填，3–4 项）：每项含 `image`、`title`，可选 `index`（默认 `"01"`..）、`caption`（1–2 行说明）及 `fit`/`position`/`bg`。
+9. **`split-compare`**：
+   - `splitPercent`（可选，默认 `50`，范围 `15`–`85`）：单画框垂直中轴分割位置百分比。
+   - `before` / `after`（均必填）：`{ "image": "...", "label": "可选（中文默认 对比前/对比后，英文默认 BEFORE/AFTER）", "caption": "可选底部说明", "fit": "cover", "position": "top center", "bg": "..." }`。
+10. **`device-pair`**：
+    - `desktop`（必填）：`{ "image": "...", "label": "可选（默认 WEB）", "fit": "cover", "position": "top center", "bg": "..." }`。
+    - `mobile`（必填）：`{ "image": "...", "label": "可选（默认 iOS）", "safeTopBg": "可选灵动岛顶部安全区纯色背景", "fit": "cover", "position": "top center", "bg": "..." }`。
+11. **`changelog-card`**：
+    - `version`（必填）：版本号字符串（如 `"v0.4"`、`"2.1.0"`），小数点自动着主题色高亮。
+    - `highlights`（必填，2–4 项）：每项含 `title`，可选 `desc`（别名 `caption`）和 `index`（默认 `"01"`..）。
+    - `image`（必填，也可封装在 `shot` 对象中）：旗舰截图路径，支持 `fit`/`position`/`bg`。
+    - `tag`（可选）：旗舰截图背后的遮挡雕塑字，中文默认 `"版本更新"`，英文默认 `"RELEASE"`。
+    - `metaLeft` / `metaRight`（可选）：右侧旗舰截图底部的左右双侧等宽短注。

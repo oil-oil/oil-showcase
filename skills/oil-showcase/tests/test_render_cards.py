@@ -348,6 +348,69 @@ class RenderCardsValidationTest(unittest.TestCase):
         self.assertEqual(len(wp_errors), 2, payload["errors"])
 
 
+    def test_v040_validation_errors_rejected(self) -> None:
+        spec = self.tmp_dir / "bad-v040.json"
+        spec.write_text(
+            json.dumps(
+                {
+                    "cards": [
+                        {
+                            "id": "bad-palette",
+                            "layout": "window-callout",
+                            "theme": "wallpaper-stage",
+                            "stagePalette": "neon",
+                            "title": "Bad palette",
+                            "window": {"image": "sample.png"},
+                        },
+                        {
+                            "id": "bad-split",
+                            "layout": "split-compare",
+                            "theme": "cool-gallery",
+                            "splitPercent": 95,
+                            "title": "Bad split",
+                            "before": {"image": "sample.png"},
+                            "after": {"image": "sample.png"},
+                        },
+                        {
+                            "id": "bad-device",
+                            "layout": "device-pair",
+                            "title": "Bad device",
+                            "desktop": {"image": "sample.png"},
+                            "mobile": {"image": "sample.png", "safeTopBg": "url(javascript:alert(1))"},
+                        },
+                        {
+                            "id": "bad-changelog",
+                            "layout": "changelog-card",
+                            "title": "Bad changelog",
+                            "version": "",
+                            "image": "sample.png",
+                            "highlights": [{"title": "Only one"}],
+                        },
+                        {
+                            "id": "bad-wc-mode",
+                            "layout": "window-callout",
+                            "mode": "unknown-mode",
+                            "title": "Bad wc",
+                            "window": {"image": "sample.png"},
+                            "callouts": [],
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        rc, payload = run_cli("render", str(spec), "--out-dir", str(self.tmp_dir / "out-bad-v040"))
+        self.assertEqual(rc, 1)
+        self.assertFalse(payload["ok"])
+        errs = payload["errors"]
+        self.assertTrue(any("stagePalette" in e for e in errs), errs)
+        self.assertTrue(any("splitPercent" in e for e in errs), errs)
+        self.assertTrue(any("safeTopBg" in e for e in errs), errs)
+        self.assertTrue(any("version" in e for e in errs), errs)
+        self.assertTrue(any("highlights" in e for e in errs), errs)
+        self.assertTrue(any("mode" in e for e in errs), errs)
+
+
 class RenderCardsIntegrationTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -1389,6 +1452,220 @@ class RenderCardsIntegrationTest(unittest.TestCase):
         self.assertEqual(rc_bad, 1)
         self.assertTrue(any("style" in e for e in payload_bad["errors"]), payload_bad["errors"])
         self.assertTrue(any("tilt" in e for e in payload_bad["errors"]), payload_bad["errors"])
+
+    def test_v040_new_themes_layouts_and_window_callout_modes(self) -> None:
+        spec_data = {
+            "brand": {"name": "Studio Kit", "tag": "v0.4.0"},
+            "cards": [
+                {
+                    "id": "v04-split-en",
+                    "layout": "split-compare",
+                    "theme": "cool-gallery",
+                    "displayStyle": "serif",
+                    "ratio": "16:9",
+                    "accent": "#0284c7",
+                    "splitPercent": 48,
+                    "title": "From plate to product.",
+                    "subtitle": "Pixel-aligned single-frame split.",
+                    "before": {"image": "assets/mod-1.png", "caption": "LEFT · Base plate"},
+                    "after": {"image": "assets/mod-2.png", "caption": "RIGHT · Live UI"},
+                },
+                {
+                    "id": "v04-split-zh",
+                    "layout": "split-compare",
+                    "theme": "warm-paper",
+                    "ratio": "3:4",
+                    "accent": "#0284c7",
+                    "title": "像素对齐分屏对比",
+                    "before": {"image": "assets/mod-1.png"},
+                    "after": {"image": "assets/mod-2.png"},
+                },
+                {
+                    "id": "v04-device-pair",
+                    "layout": "device-pair",
+                    "theme": "warm-paper",
+                    "ratio": "16:9",
+                    "accent": "#0284c7",
+                    "title": "One product, every screen.",
+                    "subtitle": "Desktop and mobile captures together.",
+                    "desktop": {"image": "assets/hero.png"},
+                    "mobile": {"image": "assets/tall.png", "safeTopBg": "#dcf2fe"},
+                    "footer": "DESKTOP 1440×900 + MOBILE 390×844",
+                },
+                {
+                    "id": "v04-device-pair-portrait",
+                    "layout": "device-pair",
+                    "theme": "dark-studio",
+                    "ratio": "3:4",
+                    "accent": "#38bdf8",
+                    "title": "Responsive mobile pair.",
+                    "desktop": {"image": "assets/hero.png"},
+                    "mobile": {"image": "assets/tall.png"},
+                },
+                {
+                    "id": "v04-changelog-en",
+                    "layout": "changelog-card",
+                    "theme": "cool-gallery",
+                    "ratio": "16:9",
+                    "accent": "#f65240",
+                    "version": "v0.4",
+                    "title": "Finish talking, and it’s cut.",
+                    "image": "assets/hero.png",
+                    "metaLeft": "AUTO CLEAN-UP",
+                    "metaRight": "SAVES 7.1 S",
+                    "footer": "MACOS 14+ · APPLE SILICON",
+                    "highlights": [
+                        {"title": "One-click pause cleanup", "desc": "Flags silences and fillers locally."},
+                        {"title": "Local AI agent CLI", "desc": "Proposes cuts from transcripts."},
+                        {"title": "On-device Whisper", "desc": "Word-level sync with zero upload."},
+                    ],
+                },
+                {
+                    "id": "v04-changelog-zh",
+                    "layout": "changelog-card",
+                    "theme": "dark-studio",
+                    "ratio": "3:4",
+                    "accent": "#f65240",
+                    "version": "v0.4",
+                    "title": "说完即剪，一步到位",
+                    "image": "assets/hero.png",
+                    "highlights": [
+                        {"title": "一键气口清理", "desc": "自动识别停顿与口头禅"},
+                        {"title": "本地语音同步", "desc": "离线生成精准词级字幕"},
+                    ],
+                },
+                {
+                    "id": "v04-wallpaper-stage",
+                    "layout": "window-callout",
+                    "theme": "wallpaper-stage",
+                    "stagePalette": "ocean",
+                    "ratio": "16:9",
+                    "accent": "#38bdf8",
+                    "title": "Record once. Polish in seconds.",
+                    "subtitle": "Pure-code atmospheric mesh with glass bezel.",
+                    "stageLabel": "STAGE",
+                    "window": {"image": "assets/hero.png", "fit": "cover"},
+                },
+                {
+                    "id": "v04-detail-loupe",
+                    "layout": "window-callout",
+                    "theme": "dark-studio",
+                    "ratio": "16:9",
+                    "accent": "#f65240",
+                    "title": "Auto-zoom on every click.",
+                    "subtitle": "Single-point focus mask with 2.4× loupe.",
+                    "window": {"image": "assets/hero.png", "fit": "cover"},
+                    "callouts": [
+                        {
+                            "index": "01",
+                            "eyebrow": "2.4× TIMELINE LOUPE",
+                            "title": "Click-follow timeline",
+                            "desc": "Tracks clicks with smooth 1.6× zoom.",
+                            "image": "assets/mod-1.png",
+                            "targetX": 26,
+                            "targetY": 89,
+                            "targetW": 50,
+                            "targetH": 18,
+                            "specs": [
+                                {"label": "ZOOM", "value": "1.6×"},
+                                {"label": "ENGINE", "value": "Metal"},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "id": "v04-blueprint-grid",
+                    "layout": "window-callout",
+                    "theme": "blueprint-grid",
+                    "ratio": "16:9",
+                    "accent": "#1d4ed8",
+                    "gridLabel": "SCALE 2:1 · GRID 40PX · DWG 06",
+                    "stageLabel": "SPEC 01",
+                    "viewportLabel": "VIEWPORT 1440×900",
+                    "title": "Structured spatial workflows.",
+                    "subtitle": "Architectural drafting sheet with orthogonal leaders.",
+                    "window": {"image": "assets/hero.png", "fit": "cover"},
+                    "callouts": [
+                        {
+                            "eyebrow": "A·01 · CONTOUR SURFACE",
+                            "title": "Topographic relief canvas",
+                            "desc": "Layered curves at strict 0° upright alignment.",
+                            "targetX": 87,
+                            "targetY": 36,
+                        },
+                        {
+                            "eyebrow": "A·02 · SPATIAL ENGINE",
+                            "title": "Live node-graph telemetry",
+                            "desc": "Branches rendered crisp at 2× pixel density.",
+                            "targetX": 75,
+                            "targetY": 67,
+                        },
+                    ],
+                    "specs": [
+                        {"label": "PROJECTION", "value": "ORTHOGONAL 0°"},
+                        {"label": "GRID UNIT", "value": "40 PX / 160 PX"},
+                    ],
+                },
+            ],
+        }
+        spec_path = self.tmp_dir / "v040.spec.json"
+        spec_path.write_text(json.dumps(spec_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        out_dir = self.tmp_dir / "out-v040"
+        rc, payload = run_cli("render", str(spec_path), "--out-dir", str(out_dir), "--scale", "1")
+        self.assertEqual(rc, 0, payload)
+        self.assertEqual(payload["rendered"], 9)
+
+        for card in payload["cards"]:
+            self.assertEqual(card["warnings"], [], f"Unexpected warnings for {card['id']}: {card['warnings']}")
+            self.assertTrue(Path(card["png"]).is_file())
+            html_text = Path(card["html"]).read_text(encoding="utf-8")
+            self.assertNotIn("ba-pill", html_text)
+            self.assertNotIn("sc-layer-badge", html_text)
+
+        sp_en = (out_dir / "html" / "v04-split-en.html").read_text(encoding="utf-8")
+        self.assertIn("layout-split-compare", sp_en)
+        self.assertIn("sp-divider-handle", sp_en)
+        self.assertIn(">BEFORE<", sp_en)
+        self.assertIn(">AFTER<", sp_en)
+
+        sp_zh = (out_dir / "html" / "v04-split-zh.html").read_text(encoding="utf-8")
+        self.assertIn(">对比前<", sp_zh)
+        self.assertIn(">对比后<", sp_zh)
+
+        dp_html = (out_dir / "html" / "v04-device-pair.html").read_text(encoding="utf-8")
+        self.assertIn("dp-desktop-frame", dp_html)
+        self.assertIn("dp-mobile-wrap", dp_html)
+        self.assertIn("dp-dynamic-island", dp_html)
+        self.assertIn(">WEB<", dp_html)
+        self.assertIn(">iOS<", dp_html)
+
+        cl_en = (out_dir / "html" / "v04-changelog-en.html").read_text(encoding="utf-8")
+        self.assertIn("cl-version-dot", cl_en)
+        self.assertIn(">RELEASE<", cl_en)
+        self.assertIn("AUTO CLEAN-UP", cl_en)
+
+        cl_zh = (out_dir / "html" / "v04-changelog-zh.html").read_text(encoding="utf-8")
+        self.assertIn(">版本更新<", cl_zh)
+
+        wp_html = (out_dir / "html" / "v04-wallpaper-stage.html").read_text(encoding="utf-8")
+        self.assertIn("theme-wallpaper-stage stage-palette-ocean", wp_html)
+        self.assertIn("wc-mode-stage", wp_html)
+        self.assertIn("wc-stage-bezel", wp_html)
+        self.assertIn(">STAGE<", wp_html)
+
+        lp_html = (out_dir / "html" / "v04-detail-loupe.html").read_text(encoding="utf-8")
+        self.assertIn("wc-mode-loupe", lp_html)
+        self.assertIn("wc-focus-mask-svg", lp_html)
+        self.assertIn("wc-loupe-focus-box", lp_html)
+        self.assertIn("wc-loupe-metrics", lp_html)
+
+        bp_html = (out_dir / "html" / "v04-blueprint-grid.html").read_text(encoding="utf-8")
+        self.assertIn("theme-blueprint-grid", bp_html)
+        self.assertIn("bp-grid-bg", bp_html)
+        self.assertIn("bp-drafting-svg", bp_html)
+        self.assertIn("wc-mode-blueprint", bp_html)
+        self.assertIn("wc-bp-meta", bp_html)
+        self.assertIn("VIEWPORT 1440×900", bp_html)
 
 
 if __name__ == "__main__":

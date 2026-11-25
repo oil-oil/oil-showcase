@@ -1,15 +1,15 @@
 ---
 name: oil-showcase
-description: 用克制的画廊编辑风将任意真实产品截图（网站、深色桌面工作台、原生工具、移动 App）、分层素材与界面模块编排为高分辨率展示卡片与结构拆解图（支持暖纸/暗棚/冷灰三套主题、8 种通用版式、16:9/4:3/3:4/9:16/1:1 画幅，默认 2x 导出 PNG 与离线总览页）。当用户需要制作产品发布配图、社媒展示卡、竖屏封面图、Bento 模块总览、横屏窗口标注解剖、前后对比卡、三四步流程卡或多屏画廊墙时使用。不用于多页演示幻灯片（交给 oil-ppt）、长图文写作或发布（交给 oil-post）、漫画墨线概念解释图（交给 oil-visual），也不用于直接设计或编写线上产品界面（交给 oil-ui-pro）。
+description: 用克制的画廊编辑风将任意真实产品截图（网站、深色桌面工作台、原生工具、移动 App）、分层素材与界面模块编排为高分辨率展示卡片与结构拆解图（支持暖纸/暗棚/冷灰/壁纸舞台/蓝图网格 5 套主题、11 种通用版式含单点放大镜/分屏对比/双设备同屏/版本更新卡、16:9/4:3/3:4/9:16/1:1 画幅，默认 2x 导出 PNG 与离线总览页）。当用户需要制作产品发布配图、社媒展示卡、版本更新卡、分屏对比、桌面与手机同屏展示、单点局部放大镜、蓝图标注卡、竖屏封面图、Bento 模块总览、前后对比卡、三四步流程卡或多屏画廊墙时使用。不用于多页演示幻灯片（交给 oil-ppt）、长图文写作或发布（交给 oil-post）、漫画墨线概念解释图（交给 oil-visual），也不用于直接设计或编写线上产品界面（交给 oil-ui-pro）。
 license: MIT
 compatibility: 核心脚本仅使用 Python 3.10+ 标准库，调用本机 Chrome、Chromium 或 Microsoft Edge 无头模式渲染，无需安装外部依赖，内置 SIL OFL 字体。
 metadata:
-  version: "0.3.0"
+  version: "0.4.0"
 ---
 
 # oil-showcase
 
-把真实产品画面编排成克制、耐看的高分辨率展示卡。画板内置纯代码摄影棚布光（左上斜向主光、轻柔主体反光与内联 SVG 哑光颗粒，覆盖 `warm-paper`、`dark-studio`、`cool-gallery` 三套中性主题），只把产品主题色克制地注入遮挡雕塑字序号、发光虚线标线、极简过渡箭头和焦点框，适配网站、深色桌面工作台、原生工具与移动 App。
+把真实产品画面编排成克制、耐看的高分辨率展示卡。画板内置纯代码摄影棚布光与氛围主题（`warm-paper`、`dark-studio`、`cool-gallery`、`wallpaper-stage`、`blueprint-grid` 五套主题，内联 SVG 哑光颗粒，零 AI 生图），只把产品主题色克制地注入遮挡雕塑字序号、发光虚线标线、极简过渡箭头和焦点框，适配网站、深色桌面工作台、原生工具与移动 App。
 
 下文 `<python>` 指 Python 3.10+ 解释器：macOS 与 Linux 通常为 `python3`，Windows 通常为 `py -3`。
 
@@ -44,21 +44,25 @@ metadata:
 
 | 版式 `layout` | 适用叙事 |
 | --- | --- |
-| `layered-hero` | 2–3 层素材叠加 + 大主图 |
-| `layered-bento` | 左侧分层叠卡 + 右侧 2 列模块 Bento |
-| `section-assembly` | 中栏切片用虚线指向右侧竖向整页 |
-| `module-bento` | 顶部标题 + 3×2 / 2×2 / 2+3 业务模块网格 |
-| `gallery-wall` | 规整多页展陈（`tilted-pages`）或拼接画廊墙（`collage`，默认横平竖直，可加 `tilt: true`） |
-| `window-callout` | 左侧大主窗口 + 右侧 2–4 张放大细节卡与发光虚线标线（可选上下 `stacked`） |
-| `before-after` | 尺度与光影分层的开启前/后、改版前/后并排或上下对比（支持 `widthPercent` 与光束裁切线） |
-| `workflow-steps` | 3–4 步端到端流程串联（规整横排 `row` 或非对称层次舞台 `style: "staged"`） |
+| `layered-hero` | 2–3 层叠卡 + 主图 |
+| `layered-bento` | 左侧分层 + 右侧 Bento |
+| `section-assembly` | 中栏切片虚线连整页 |
+| `module-bento` | 2–6 业务模块网格 |
+| `gallery-wall` | 多页展陈或拼接墙 |
+| `window-callout` | 单窗舞台 / 1点放大镜 / 多点或蓝图标注 |
+| `before-after` | 左右或上下改版/时间轴对比 |
+| `workflow-steps` | 3–4 步横排或 3D 层次舞台 |
+| `split-compare` | 单画框像素对齐分屏对比 |
+| `device-pair` | 桌面 + 暗钛手机同屏展示 |
+| `changelog-card` | 大号版本号 + 亮点 + 旗舰图 |
 
-- 主题 `theme` 可选 `warm-paper`（暖纸棉纹，默认衬线）、`dark-studio`（深色阳极哑光无衬线）或 `cool-gallery`（冷灰建筑哑光无衬线），均内置左上主光、微颗粒质感与卡片高光描边，可用 `displayStyle` 单独覆盖标题字体风格。
+- 主题 `theme` 可选 `warm-paper`（暖纸棉纹，默认衬线）、`dark-studio`（深色阳极哑光无衬线）、`cool-gallery`（冷灰建筑哑光无衬线）、`wallpaper-stage`（纯代码暮色氛围渐变网格 + 磨砂玻璃外框，支持 `stagePalette`: `twilight`/`ocean`/`sunset`/`emerald`）或 `blueprint-grid`（淡灰 `#F3F5F8` 建筑制图网格与十字套准标），可用 `displayStyle` 单独覆盖标题字体风格。
 - 选定画幅比例（`16:9`、`4:3`、`3:4`、`9:16`、`1:1` 或自定义 `WxH`）和产品主题色 `accent`，深色或异形截图善用 `fit`、`position`、`bg`。
 - **语言跟随用户（Language follows conversation）**：所有卡片标题、副标题、步骤与放大标注、对比标签（`before`/`after`）和图例默认跟随当前用户对话语言（中文对话中文，英文对话英文），仅当用户明确要求时切换。
-- **视觉张力与高清边界**：(1) **纯代码布光 + 卡片后遮挡雕塑字**——弃用带框胶囊标签，将大号 `BEFORE`/`AFTER`（中文自动 `对比前`/`对比后`）与 `01`/`02`/`03` 置于卡片背后微遮挡 18–25% 制造层次；(2) **默认横平竖直保高清**——`before-after`、`window-callout`、`workflow-steps`（`row`）、`module-bento`、`section-assembly`、`gallery-wall` 默认 `0deg` 端正对齐，避免旋转重采样模糊界面文字（必要时显式设 `tilt: true`）；仅 `layered-hero` 与 `workflow-steps` `style: "staged"` 默认分层微倾（可设 `tilt: false` 关闭）；(3) **尺度与对比剧变**——`before-after` 须 >50% 可见变化，左右并排靠前主卡放大提亮、上下时间轴配 `after.widthPercent` + 发光裁切线 + 无框大字 `deltaBadge`；(4) **同排语境统一**——同排卡片统一满出血或统一留白舞台，不混拼裸露浮卡与全屏彩色壁纸。
-- **单一文字锚点，不分散堆字**：每张展板只在左上角保留「品牌标 + 一句短主标题」（必要时紧跟 1 行短说明），不在右上角另起装饰标签或分散多处小字；次级说明字号不低于可读下限（`15–21px`），标题与画面已说清时直接省略 `subtitle`、`caption` 和 `footer`。
-- 若需求明显超出 8 种内置版式，可遵循参考文档令牌编写自定义 HTML，再用 `shoot` 导出。
+- **纯代码布光与遮挡雕塑字**：弃用带框胶囊标签，将大号 `BEFORE`/`AFTER`（中文自动 `对比前`/`对比后`）与 `01`/`02`/`03` 置于卡片背后微遮挡 18–25% 制造层次；同排卡片统一满出血或统一留白舞台，不混拼裸露浮卡与彩色壁纸。
+- **默认横平竖直保高清**：细读版式（`split-compare`、`device-pair`、`changelog-card`、`before-after`、`window-callout`、`workflow-steps` `row`、`module-bento`、`section-assembly`、`gallery-wall`）默认 `0deg` 端正对齐防文字模糊（可显式设 `tilt: true`）；仅 `layered-hero` 与 `workflow-steps` `staged` 默认微倾（可设 `tilt: false`）。
+- **单一文字锚点，不分散堆字**：每张展板只在左上角保留「品牌标 + 一句短主标题」（必要时紧跟 1 行短说明），不在右上角另起装饰标签或分散多处小字；次级说明字号不低于可读下限（`14–21px`），标题与画面已说清时直接省略 `subtitle`、`caption` 和 `footer`。
+- 若需求明显超出 11 种内置版式，可遵循参考文档令牌编写自定义 HTML，再用 `shoot` 导出。
 
 ## 第四步：渲染与自动校验
 
@@ -85,6 +89,6 @@ metadata:
 
 | 候选动作 | 得到的结果 | 额外代价 |
 | --- | --- | --- |
-| 切换画板主题（`dark-studio` / `cool-gallery` / `warm-paper`） | 同套素材与版式生成另一氛围版本对比 | 新增导出目录，重渲染几秒 |
+| 切换画板主题（`warm-paper` / `dark-studio` / `cool-gallery` / `wallpaper-stage` / `blueprint-grid`） | 同套素材与版式生成另一氛围版本对比 | 新增导出目录，重渲染几秒 |
 | 适配竖版 `3:4` / `9:16` 或方图 `1:1` | 同套素材自动重排为移动端竖屏、短视频封面或方图卡片 | 新增文件，重新渲染几秒 |
 | 精修单张构图或标线坐标 | 用 `--only` 局部微调单卡并保持总览页完整 | 只重渲染单张，耗时极短 |

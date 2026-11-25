@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render editorial product showcase cards (warm-paper, dark-studio, cool-gallery) to crisp @2x PNGs.
+"""Render editorial product showcase cards (warm-paper, dark-studio, cool-gallery, wallpaper-stage, blueprint-grid) to crisp @2x PNGs.
 
 Uses Python 3.10+ standard library only and drives local headless Chrome,
 Chromium, or Microsoft Edge directly via Chrome DevTools Protocol (CDP)
@@ -71,14 +71,21 @@ SUPPORTED_LAYOUTS = (
     "window-callout",
     "before-after",
     "workflow-steps",
+    "split-compare",
+    "device-pair",
+    "changelog-card",
 )
 
 SUPPORTED_THEMES = (
     "warm-paper",
     "dark-studio",
     "cool-gallery",
+    "wallpaper-stage",
+    "blueprint-grid",
 )
 
+SUPPORTED_STAGE_PALETTES = ("twilight", "ocean", "sunset", "emerald")
+SUPPORTED_WC_MODES = ("auto", "stage", "loupe", "split", "stacked", "blueprint")
 SUPPORTED_DISPLAY_STYLES = ("serif", "sans")
 SUPPORTED_WC_ARRANGEMENTS = ("split", "stacked")
 SUPPORTED_BA_ORIENTATIONS = ("side-by-side", "stacked")
@@ -89,18 +96,24 @@ THEME_GRAIN_FREQUENCY: dict[str, str] = {
     "warm-paper": "0.88",
     "dark-studio": "0.82",
     "cool-gallery": "0.86",
+    "wallpaper-stage": "0.80",
+    "blueprint-grid": "0.88",
 }
 
 THEME_DEFAULT_DISPLAY: dict[str, str] = {
     "warm-paper": "serif",
     "dark-studio": "sans",
     "cool-gallery": "sans",
+    "wallpaper-stage": "sans",
+    "blueprint-grid": "sans",
 }
 
 THEME_DEFAULT_ACCENT: dict[str, str] = {
     "warm-paper": "#1b1c19",
     "dark-studio": "#f3f4f6",
     "cool-gallery": "#14171d",
+    "wallpaper-stage": "#eb8666",
+    "blueprint-grid": "#1d4ed8",
 }
 
 CARD_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
@@ -130,7 +143,21 @@ def is_cjk_card(card: dict[str, Any]) -> bool:
         return False
 
     samples: list[str] = []
-    for key in ("title", "subtitle", "eyebrow", "footer", "compareNote", "deltaBadge"):
+    for key in (
+        "title",
+        "subtitle",
+        "eyebrow",
+        "footer",
+        "compareNote",
+        "deltaBadge",
+        "version",
+        "tag",
+        "stageLabel",
+        "viewportLabel",
+        "metaLeft",
+        "metaRight",
+        "gridLabel",
+    ):
         val = card.get(key)
         if isinstance(val, str) and val:
             samples.append(val)
@@ -142,20 +169,20 @@ def is_cjk_card(card: dict[str, Any]) -> bool:
             if isinstance(val, str) and val:
                 samples.append(val)
 
-    for list_key in ("layers", "items", "pages", "sections", "callouts", "steps"):
+    for list_key in ("layers", "items", "pages", "sections", "callouts", "steps", "highlights", "specs"):
         seq = card.get(list_key)
         if isinstance(seq, list):
             for entry in seq:
                 if isinstance(entry, dict):
-                    for sub_key in ("label", "title", "caption", "summary", "tag"):
+                    for sub_key in ("label", "title", "caption", "desc", "summary", "tag", "eyebrow", "value"):
                         val = entry.get(sub_key)
                         if isinstance(val, str) and val:
                             samples.append(val)
 
-    for side_key in ("before", "after", "window"):
+    for side_key in ("before", "after", "window", "desktop", "mobile", "shot"):
         side = card.get(side_key)
         if isinstance(side, dict):
-            for sub_key in ("label", "caption", "meta", "tag"):
+            for sub_key in ("label", "caption", "meta", "tag", "metaLeft", "metaRight"):
                 val = side.get(sub_key)
                 if isinstance(val, str) and val:
                     samples.append(val)
@@ -675,7 +702,15 @@ class ChromeSession:
                   '.sc-section-caption',
                   '.wc-callout-title',
                   '.wc-callout-caption',
+                  '.wc-loupe-title',
+                  '.wc-loupe-desc',
+                  '.wc-bp-heading',
+                  '.wc-bp-text',
                   '.ba-caption',
+                  '.sp-caption',
+                  '.cl-release-title',
+                  '.cl-hl-title',
+                  '.cl-hl-desc',
                   '.ws-step-title',
                   '.ws-step-caption',
                 ];
@@ -939,6 +974,13 @@ def validate_spec(
         )
         default_theme = "warm-paper"
 
+    default_stage_palette = str(data.get("stagePalette") or "twilight").strip().lower()
+    if default_stage_palette not in SUPPORTED_STAGE_PALETTES:
+        errors.append(
+            f"顶层 stagePalette 无效（{default_stage_palette!r}）；可选值：{', '.join(SUPPORTED_STAGE_PALETTES)}。"
+        )
+        default_stage_palette = "twilight"
+
     default_display_raw = data.get("displayStyle")
     default_display: str | None = None
     if default_display_raw is not None:
@@ -999,6 +1041,13 @@ def validate_spec(
         if theme not in SUPPORTED_THEMES:
             errors.append(
                 f"{label}.theme 无效（{theme!r}）；可选值：{', '.join(SUPPORTED_THEMES)}。"
+            )
+            continue
+
+        stage_palette = str(raw.get("stagePalette") or default_stage_palette).strip().lower()
+        if stage_palette not in SUPPORTED_STAGE_PALETTES:
+            errors.append(
+                f"{label}.stagePalette 无效（{stage_palette!r}）；可选值：{', '.join(SUPPORTED_STAGE_PALETTES)}。"
             )
             continue
 
@@ -1086,6 +1135,8 @@ def validate_spec(
             "id": card_id,
             "layout": layout,
             "theme": theme,
+            "stagePalette": stage_palette,
+            "gridLabel": str(raw.get("gridLabel", "")).strip(),
             "displayStyle": display_style,
             "lang": "zh" if card_is_cjk else "en",
             "ratio": ratio_str,
@@ -1376,12 +1427,21 @@ def validate_spec(
                 }
 
         if layout == "window-callout":
+            raw_mode = str(raw.get("mode") or "auto").strip().lower()
+            if raw_mode not in SUPPORTED_WC_MODES:
+                errors.append(
+                    f"{label}.mode 无效（{raw_mode!r}）；可选值：{', '.join(SUPPORTED_WC_MODES)}。"
+                )
+                raw_mode = "auto"
+
             arrangement = str(raw.get("arrangement") or "split").strip()
             if arrangement not in SUPPORTED_WC_ARRANGEMENTS:
                 errors.append(
                     f"{label}.arrangement 无效（{arrangement!r}）；可选值：{', '.join(SUPPORTED_WC_ARRANGEMENTS)}。"
                 )
                 arrangement = "split"
+            if raw_mode in ("split", "stacked"):
+                arrangement = raw_mode
             card["arrangement"] = arrangement
 
             raw_window = raw.get("window")
@@ -1411,66 +1471,138 @@ def validate_spec(
                 }
 
             raw_callouts = raw.get("callouts")
-            if not isinstance(raw_callouts, list) or not (2 <= len(raw_callouts) <= 4):
-                errors.append(f"{label}.callouts 必须包含 2 到 4 个局部标注卡。")
+            if raw_callouts is None:
+                raw_callouts = []
+            if not isinstance(raw_callouts, list) or len(raw_callouts) > 4:
+                errors.append(f"{label}.callouts 必须是包含 0 到 4 个项的数组。")
+                raw_callouts = []
+
+            if raw_mode == "stage" or (raw_mode == "auto" and len(raw_callouts) == 0):
+                wc_mode = "stage"
+            elif raw_mode == "loupe" or (raw_mode == "auto" and len(raw_callouts) == 1):
+                wc_mode = "loupe"
+                if len(raw_callouts) != 1:
+                    errors.append(f"{label}.callouts 在 loupe 模式下必须恰好包含 1 个聚焦放大项。")
+            elif raw_mode == "blueprint" or (
+                raw_mode == "auto" and theme == "blueprint-grid" and len(raw_callouts) >= 2
+            ):
+                wc_mode = "blueprint"
+                if len(raw_callouts) < 1:
+                    errors.append(f"{label}.callouts 在 blueprint 模式下至少需要 1 个标注项。")
             else:
-                callouts: list[dict[str, Any]] = []
-                count = len(raw_callouts)
-                for ci, co in enumerate(raw_callouts):
-                    if not isinstance(co, dict):
-                        errors.append(f"{label}.callouts[{ci}] 必须是对象。")
-                        continue
+                wc_mode = "standard"
+                if len(raw_callouts) < 2:
+                    errors.append(f"{label}.callouts 在 {arrangement} 模式下必须包含 2 到 4 个局部标注卡。")
+
+            card["wcMode"] = wc_mode
+            card["stageLabel"] = str(raw.get("stageLabel", "")).strip()
+            card["viewportLabel"] = str(raw.get("viewportLabel", "")).strip()
+
+            card_specs: list[dict[str, str]] = []
+            raw_card_specs = raw.get("specs")
+            if raw_card_specs is not None:
+                if not isinstance(raw_card_specs, list) or len(raw_card_specs) > 5:
+                    errors.append(f"{label}.specs 必须是包含最多 5 项的数组。")
+                else:
+                    for spi, sp in enumerate(raw_card_specs):
+                        if not isinstance(sp, dict):
+                            errors.append(f"{label}.specs[{spi}] 必须是包含 label 和 value 的对象。")
+                            continue
+                        sp_lbl = str(sp.get("label", "")).strip()
+                        sp_val = str(sp.get("value", "")).strip()
+                        if sp_lbl or sp_val:
+                            card_specs.append({"label": sp_lbl, "value": sp_val})
+            card["specs"] = card_specs
+
+            callouts: list[dict[str, Any]] = []
+            count = len(raw_callouts)
+            for ci, co in enumerate(raw_callouts):
+                if not isinstance(co, dict):
+                    errors.append(f"{label}.callouts[{ci}] 必须是对象。")
+                    continue
+                img_raw = co.get("image", "")
+                if img_raw:
                     uri = resolve_asset_path(
-                        co.get("image", ""),
+                        img_raw,
                         base_dir,
                         f"{label}.callouts[{ci}].image",
                         errors,
                         local_paths=card_local_paths,
                     )
-                    fit, position, bg = normalize_image_options(
-                        co,
-                        f"{label}.callouts[{ci}]",
+                elif wc_mode == "blueprint":
+                    uri = ""
+                else:
+                    uri = resolve_asset_path(
+                        img_raw,
+                        base_dir,
+                        f"{label}.callouts[{ci}].image",
                         errors,
-                        default_fit="cover",
-                        default_position="center",
+                        local_paths=card_local_paths,
                     )
-                    default_x = round(18 + (64 * ci / max(1, count - 1)), 1)
-                    target_x = co.get("targetX", default_x)
-                    target_y = co.get("targetY", 62.0)
-                    if not isinstance(target_x, (int, float)) or not (0 <= target_x <= 100):
-                        errors.append(f"{label}.callouts[{ci}].targetX 必须在 0 到 100 之间。")
-                        target_x = default_x
-                    if not isinstance(target_y, (int, float)) or not (0 <= target_y <= 100):
-                        errors.append(f"{label}.callouts[{ci}].targetY 必须在 0 到 100 之间。")
-                        target_y = 62.0
-                    target_w = co.get("targetW")
-                    target_h = co.get("targetH")
-                    if target_w is not None and (not isinstance(target_w, (int, float)) or not (1 <= target_w <= 100)):
-                        errors.append(f"{label}.callouts[{ci}].targetW 必须在 1 到 100 之间。")
-                        target_w = None
-                    if target_h is not None and (not isinstance(target_h, (int, float)) or not (1 <= target_h <= 100)):
-                        errors.append(f"{label}.callouts[{ci}].targetH 必须在 1 到 100 之间。")
-                        target_h = None
-                    co_title = str(co.get("title") or co.get("label") or "").strip()
-                    if not co_title:
-                        errors.append(f"{label}.callouts[{ci}].title 不能为空。")
-                    callouts.append(
-                        {
-                            "index": str(co.get("index") or f"{ci + 1:02d}").strip(),
-                            "tag": str(co.get("tag", "")).strip(),
-                            "title": co_title,
-                            "caption": str(co.get("caption", "")).strip(),
-                            "image": uri,
-                            "targetX": float(target_x),
-                            "targetY": float(target_y),
-                            "targetW": float(target_w) if target_w is not None else None,
-                            "targetH": float(target_h) if target_h is not None else None,
-                            "fit": fit,
-                            "position": position,
-                            "bg": bg,
-                        }
-                    )
-                card["callouts"] = callouts
+                fit, position, bg = normalize_image_options(
+                    co,
+                    f"{label}.callouts[{ci}]",
+                    errors,
+                    default_fit="cover",
+                    default_position="center",
+                )
+                default_x = round(18 + (64 * ci / max(1, count - 1)), 1) if count > 1 else 36.0
+                target_x = co.get("targetX", default_x)
+                target_y = co.get("targetY", 62.0)
+                if not isinstance(target_x, (int, float)) or isinstance(target_x, bool) or not (0 <= target_x <= 100):
+                    errors.append(f"{label}.callouts[{ci}].targetX 必须在 0 到 100 之间。")
+                    target_x = default_x
+                if not isinstance(target_y, (int, float)) or isinstance(target_y, bool) or not (0 <= target_y <= 100):
+                    errors.append(f"{label}.callouts[{ci}].targetY 必须在 0 到 100 之间。")
+                    target_y = 62.0
+                target_w = co.get("targetW")
+                target_h = co.get("targetH")
+                if target_w is not None and (
+                    isinstance(target_w, bool) or not isinstance(target_w, (int, float)) or not (1 <= target_w <= 100)
+                ):
+                    errors.append(f"{label}.callouts[{ci}].targetW 必须在 1 到 100 之间。")
+                    target_w = None
+                if target_h is not None and (
+                    isinstance(target_h, bool) or not isinstance(target_h, (int, float)) or not (1 <= target_h <= 100)
+                ):
+                    errors.append(f"{label}.callouts[{ci}].targetH 必须在 1 到 100 之间。")
+                    target_h = None
+                co_title = str(co.get("title") or co.get("label") or "").strip()
+                if not co_title:
+                    errors.append(f"{label}.callouts[{ci}].title 不能为空。")
+                co_specs: list[dict[str, str]] = []
+                raw_co_specs = co.get("specs")
+                if raw_co_specs is not None:
+                    if not isinstance(raw_co_specs, list) or len(raw_co_specs) > 4:
+                        errors.append(f"{label}.callouts[{ci}].specs 必须是包含最多 4 项的数组。")
+                    else:
+                        for spi, sp in enumerate(raw_co_specs):
+                            if not isinstance(sp, dict):
+                                errors.append(f"{label}.callouts[{ci}].specs[{spi}] 必须是对象。")
+                                continue
+                            sp_lbl = str(sp.get("label", "")).strip()
+                            sp_val = str(sp.get("value", "")).strip()
+                            if sp_lbl or sp_val:
+                                co_specs.append({"label": sp_lbl, "value": sp_val})
+                callouts.append(
+                    {
+                        "index": str(co.get("index") or f"{ci + 1:02d}").strip(),
+                        "eyebrow": str(co.get("eyebrow", "")).strip(),
+                        "tag": str(co.get("tag", "")).strip(),
+                        "title": co_title,
+                        "caption": str(co.get("desc") or co.get("caption") or "").strip(),
+                        "image": uri,
+                        "targetX": float(target_x),
+                        "targetY": float(target_y),
+                        "targetW": float(target_w) if target_w is not None else None,
+                        "targetH": float(target_h) if target_h is not None else None,
+                        "specs": co_specs,
+                        "fit": fit,
+                        "position": position,
+                        "bg": bg,
+                    }
+                )
+            card["callouts"] = callouts
 
         if layout == "before-after":
             raw_ba_orient = raw.get("orientation")
@@ -1585,6 +1717,175 @@ def validate_spec(
                         }
                     )
                 card["steps"] = steps
+
+        if layout == "split-compare":
+            raw_split_pct = raw.get("splitPercent", 50)
+            if (
+                isinstance(raw_split_pct, bool)
+                or not isinstance(raw_split_pct, (int, float))
+                or not math.isfinite(raw_split_pct)
+                or not (15 <= float(raw_split_pct) <= 85)
+            ):
+                errors.append(
+                    f"{label}.splitPercent 必须在 15 到 85 之间，收到 {raw_split_pct!r}。"
+                )
+                split_pct = 50.0
+            else:
+                split_pct = float(raw_split_pct)
+            card["splitPercent"] = split_pct
+
+            sp_defaults = (
+                (("before", "对比前"), ("after", "对比后"))
+                if card_is_cjk
+                else (("before", "BEFORE"), ("after", "AFTER"))
+            )
+            for side_key, default_lbl in sp_defaults:
+                raw_side = raw.get(side_key)
+                if not isinstance(raw_side, dict):
+                    errors.append(f"{label}.{side_key} 必须是包含 image 的对象。")
+                else:
+                    uri = resolve_asset_path(
+                        raw_side.get("image", ""),
+                        base_dir,
+                        f"{label}.{side_key}.image",
+                        errors,
+                        local_paths=card_local_paths,
+                    )
+                    fit, position, bg = normalize_image_options(
+                        raw_side,
+                        f"{label}.{side_key}",
+                        errors,
+                        default_fit="cover",
+                        default_position="top center",
+                    )
+                    card[side_key] = {
+                        "label": str(raw_side.get("label") or default_lbl).strip(),
+                        "caption": str(raw_side.get("caption", "")).strip(),
+                        "image": uri,
+                        "fit": fit,
+                        "position": position,
+                        "bg": bg,
+                    }
+
+        if layout == "device-pair":
+            dp_defaults = (
+                ("desktop", "WEB"),
+                ("mobile", "iOS"),
+            )
+            for dev_key, default_lbl in dp_defaults:
+                raw_dev = raw.get(dev_key)
+                if not isinstance(raw_dev, dict):
+                    errors.append(f"{label}.{dev_key} 必须是包含 image 的对象。")
+                else:
+                    uri = resolve_asset_path(
+                        raw_dev.get("image", ""),
+                        base_dir,
+                        f"{label}.{dev_key}.image",
+                        errors,
+                        local_paths=card_local_paths,
+                    )
+                    fit, position, bg = normalize_image_options(
+                        raw_dev,
+                        f"{label}.{dev_key}",
+                        errors,
+                        default_fit="cover",
+                        default_position="top center",
+                    )
+                    safe_top_bg = ""
+                    if dev_key == "mobile" and raw_dev.get("safeTopBg"):
+                        raw_stb = str(raw_dev.get("safeTopBg")).strip()
+                        if not BG_COLOR_RE.fullmatch(raw_stb):
+                            errors.append(
+                                f"{label}.mobile.safeTopBg 无效（{raw_stb!r}）；请使用合法十六进制或 rgb/rgba 颜色。"
+                            )
+                        else:
+                            safe_top_bg = raw_stb
+                    card[dev_key] = {
+                        "label": str(raw_dev.get("label") or default_lbl).strip(),
+                        "image": uri,
+                        "fit": fit,
+                        "position": position,
+                        "bg": bg,
+                        "safeTopBg": safe_top_bg,
+                    }
+
+        if layout == "changelog-card":
+            version = str(raw.get("version", "")).strip()
+            if not version:
+                errors.append(f"{label}.version 不能为空（例如 \"v0.4\"）。")
+            card["version"] = version
+
+            raw_highlights = raw.get("highlights")
+            if not isinstance(raw_highlights, list) or not (2 <= len(raw_highlights) <= 4):
+                errors.append(f"{label}.highlights 必须包含 2 到 4 个版本亮点项。")
+            else:
+                highlights: list[dict[str, str]] = []
+                for hi, hl in enumerate(raw_highlights):
+                    if not isinstance(hl, dict):
+                        errors.append(f"{label}.highlights[{hi}] 必须是对象。")
+                        continue
+                    hl_title = str(hl.get("title") or hl.get("label") or "").strip()
+                    if not hl_title:
+                        errors.append(f"{label}.highlights[{hi}].title 不能为空。")
+                    highlights.append(
+                        {
+                            "index": str(hl.get("index") or f"{hi + 1:02d}").strip(),
+                            "title": hl_title,
+                            "desc": str(hl.get("desc") or hl.get("caption") or "").strip(),
+                        }
+                    )
+                card["highlights"] = highlights
+
+            raw_shot = raw.get("shot")
+            raw_img = raw.get("image")
+            if isinstance(raw_shot, dict):
+                shot_src = raw_shot.get("image", "")
+                shot_opts_obj = raw_shot
+            elif isinstance(raw_img, dict):
+                shot_src = raw_img.get("image", "")
+                shot_opts_obj = raw_img
+            else:
+                shot_src = raw_img or ""
+                shot_opts_obj = raw
+            shot_uri = resolve_asset_path(
+                shot_src,
+                base_dir,
+                f"{label}.image",
+                errors,
+                local_paths=card_local_paths,
+            )
+            shot_fit, shot_pos, shot_bg = normalize_image_options(
+                shot_opts_obj,
+                f"{label}.image",
+                errors,
+                default_fit="cover",
+                default_position="center",
+            )
+            default_cl_tag = "版本更新" if card_is_cjk else "RELEASE"
+            cl_tag = str(
+                raw.get("tag")
+                or (raw_shot.get("tag") if isinstance(raw_shot, dict) else "")
+                or default_cl_tag
+            ).strip()
+            meta_left = str(
+                raw.get("metaLeft")
+                or (raw_shot.get("metaLeft") if isinstance(raw_shot, dict) else "")
+                or ""
+            ).strip()
+            meta_right = str(
+                raw.get("metaRight")
+                or (raw_shot.get("metaRight") if isinstance(raw_shot, dict) else "")
+                or ""
+            ).strip()
+            card["shot"] = {
+                "image": shot_uri,
+                "fit": shot_fit,
+                "position": shot_pos,
+                "bg": shot_bg,
+                "tag": cl_tag,
+                "metaLeft": meta_left,
+                "metaRight": meta_right,
+            }
 
         card["_inputPaths"] = sorted(str(p) for p in card_local_paths)
         normalized.append(card)
@@ -1767,6 +2068,216 @@ COMMON_CSS = """
   --halo-ring: rgba(255, 255, 255, 0.92);
 }
 
+.theme-wallpaper-stage {
+  --paper-base: #131126;
+  --paper-bg:
+    radial-gradient(ellipse 52% 46% at 10% -6%, rgba(255, 228, 240, 0.22) 0%, rgba(167, 139, 250, 0.08) 40%, transparent 70%),
+    radial-gradient(ellipse 58% 64% at 82% 72%, rgba(235, 134, 102, 0.52) 0%, rgba(196, 84, 114, 0.28) 38%, transparent 72%),
+    radial-gradient(ellipse 68% 66% at 24% 38%, rgba(96, 42, 128, 0.64) 0%, rgba(62, 28, 96, 0.28) 46%, transparent 76%),
+    radial-gradient(ellipse 64% 68% at 76% 14%, rgba(44, 58, 136, 0.68) 0%, rgba(28, 36, 88, 0.26) 46%, transparent 74%),
+    radial-gradient(ellipse 55% 58% at 16% 88%, rgba(36, 46, 112, 0.72) 0%, transparent 72%),
+    linear-gradient(138deg, #16112a 0%, #111329 48%, #1e1326 100%);
+  --key-light-bg:
+    radial-gradient(ellipse 40% 34% at 52% 86%, rgba(244, 152, 114, 0.24) 0%, transparent 72%),
+    linear-gradient(124deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 24%, transparent 48%);
+  --glow-strength: 18%;
+  --glow-secondary: 12%;
+  --grain-opacity: 0.052;
+  --grain-blend: overlay;
+  --ink: #ffffff;
+  --muted: rgba(244, 240, 252, 0.76);
+  --meta: rgba(244, 240, 252, 0.68);
+  --sep: rgba(255, 255, 255, 0.36);
+  --eyebrow-ink: rgba(255, 255, 255, 0.80);
+  --body-ink: rgba(250, 248, 255, 0.90);
+  --caption-ink: rgba(244, 240, 252, 0.76);
+  --frame-bg: #0e0f11;
+  --surface-bg: rgba(20, 18, 36, 0.84);
+  --hairline: rgba(255, 255, 255, 0.16);
+  --glass-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.06) 52%, rgba(255, 210, 196, 0.12) 100%);
+  --glass-border: rgba(255, 255, 255, 0.28);
+  --glass-inner-ring: rgba(0, 0, 0, 0.42);
+  --shadow-card:
+    0 32px 84px -14px rgba(6, 4, 18, 0.72),
+    0 14px 32px -8px rgba(6, 4, 18, 0.52),
+    0 0 0 1px rgba(255, 255, 255, 0.20);
+  --shadow-plate:
+    0 24px 62px -12px rgba(6, 4, 18, 0.68),
+    0 10px 26px -6px rgba(6, 4, 18, 0.48),
+    0 0 0 1px rgba(255, 255, 255, 0.20);
+  --shadow-hero:
+    0 42px 104px -14px rgba(6, 4, 18, 0.76),
+    0 18px 40px -8px rgba(6, 4, 18, 0.56),
+    0 0 92px -12px rgba(235, 134, 102, 0.30),
+    0 0 0 1px rgba(255, 255, 255, 0.24);
+  --rim-top: rgba(255, 255, 255, 0.44);
+  --rim-left: rgba(255, 255, 255, 0.20);
+  --rim-bottom: rgba(0, 0, 0, 0.48);
+  --sheen-grad: linear-gradient(
+    126deg,
+    rgba(255, 255, 255, 0.07) 0%,
+    rgba(255, 255, 255, 0.015) 24%,
+    transparent 46%
+  );
+  --occluded-ink: rgba(255, 244, 240, 0.14);
+  --occluded-accent-mix: 34%;
+  --connector-opacity: 0.90;
+  --halo-ring: rgba(16, 14, 34, 0.90);
+}
+
+.theme-wallpaper-stage.stage-palette-ocean {
+  --paper-base: #0a1829;
+  --paper-bg:
+    radial-gradient(ellipse 52% 46% at 10% -6%, rgba(216, 244, 255, 0.20) 0%, rgba(56, 189, 248, 0.08) 40%, transparent 70%),
+    radial-gradient(ellipse 58% 64% at 82% 72%, rgba(56, 189, 248, 0.44) 0%, rgba(14, 116, 144, 0.26) 38%, transparent 72%),
+    radial-gradient(ellipse 68% 66% at 24% 38%, rgba(20, 74, 128, 0.68) 0%, rgba(12, 48, 92, 0.28) 46%, transparent 76%),
+    radial-gradient(ellipse 64% 68% at 76% 14%, rgba(30, 64, 138, 0.64) 0%, rgba(15, 36, 86, 0.26) 46%, transparent 74%),
+    radial-gradient(ellipse 55% 58% at 16% 88%, rgba(15, 58, 108, 0.72) 0%, transparent 72%),
+    linear-gradient(138deg, #0b1b32 0%, #091628 48%, #0c2236 100%);
+  --key-light-bg:
+    radial-gradient(ellipse 40% 34% at 52% 86%, rgba(56, 189, 248, 0.20) 0%, transparent 72%),
+    linear-gradient(124deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 24%, transparent 48%);
+}
+
+.theme-wallpaper-stage.stage-palette-sunset {
+  --paper-base: #22111c;
+  --paper-bg:
+    radial-gradient(ellipse 52% 46% at 10% -6%, rgba(255, 236, 214, 0.22) 0%, rgba(251, 146, 60, 0.08) 40%, transparent 70%),
+    radial-gradient(ellipse 58% 64% at 82% 72%, rgba(249, 115, 22, 0.48) 0%, rgba(217, 70, 96, 0.30) 38%, transparent 72%),
+    radial-gradient(ellipse 68% 66% at 24% 38%, rgba(136, 38, 86, 0.64) 0%, rgba(84, 24, 62, 0.28) 46%, transparent 76%),
+    radial-gradient(ellipse 64% 68% at 76% 14%, rgba(92, 34, 88, 0.62) 0%, rgba(52, 20, 56, 0.26) 46%, transparent 74%),
+    radial-gradient(ellipse 55% 58% at 16% 88%, rgba(68, 22, 58, 0.72) 0%, transparent 72%),
+    linear-gradient(138deg, #241020 0%, #1c101f 48%, #2e161d 100%);
+  --key-light-bg:
+    radial-gradient(ellipse 40% 34% at 52% 86%, rgba(251, 146, 60, 0.24) 0%, transparent 72%),
+    linear-gradient(124deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 24%, transparent 48%);
+}
+
+.theme-wallpaper-stage.stage-palette-emerald {
+  --paper-base: #0b1b19;
+  --paper-bg:
+    radial-gradient(ellipse 52% 46% at 10% -6%, rgba(220, 252, 238, 0.18) 0%, rgba(52, 211, 153, 0.08) 40%, transparent 70%),
+    radial-gradient(ellipse 58% 64% at 82% 72%, rgba(16, 185, 129, 0.44) 0%, rgba(13, 148, 136, 0.24) 38%, transparent 72%),
+    radial-gradient(ellipse 68% 66% at 24% 38%, rgba(18, 78, 70, 0.66) 0%, rgba(12, 52, 48, 0.28) 46%, transparent 76%),
+    radial-gradient(ellipse 64% 68% at 76% 14%, rgba(22, 68, 86, 0.62) 0%, rgba(14, 42, 56, 0.26) 46%, transparent 74%),
+    radial-gradient(ellipse 55% 58% at 16% 88%, rgba(14, 56, 52, 0.72) 0%, transparent 72%),
+    linear-gradient(138deg, #0b1d1b 0%, #091719 48%, #102420 100%);
+  --key-light-bg:
+    radial-gradient(ellipse 40% 34% at 52% 86%, rgba(52, 211, 153, 0.20) 0%, transparent 72%),
+    linear-gradient(124deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 24%, transparent 48%);
+}
+
+.theme-wallpaper-stage .sc-title {
+  text-shadow: 0 2px 24px rgba(10, 8, 24, 0.35);
+}
+
+.theme-wallpaper-stage .sc-ambient-bounce {
+  opacity: 0.45;
+}
+
+.theme-blueprint-grid {
+  --paper-base: #f3f5f8;
+  --paper-bg:
+    radial-gradient(ellipse 56% 48% at 10% -4%, rgba(255, 255, 255, 0.85) 0%, rgba(243, 245, 248, 0) 68%),
+    #f3f5f8;
+  --key-light-bg: linear-gradient(
+    126deg,
+    rgba(255, 255, 255, 0.48) 0%,
+    rgba(255, 255, 255, 0.14) 24%,
+    rgba(255, 255, 255, 0) 48%
+  );
+  --glow-strength: 8%;
+  --glow-secondary: 4%;
+  --grain-opacity: 0.030;
+  --grain-blend: multiply;
+  --ink: #0b1220;
+  --muted: #475569;
+  --meta: #64748b;
+  --sep: #94a3b8;
+  --eyebrow-ink: #475569;
+  --body-ink: #1e293b;
+  --caption-ink: #475569;
+  --frame-bg: #ffffff;
+  --surface-bg: #ffffff;
+  --hairline: rgba(15, 23, 42, 0.18);
+  --glass-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.08) 100%);
+  --glass-border: rgba(255, 255, 255, 0.82);
+  --glass-inner-ring: rgba(15, 23, 42, 0.12);
+  --shadow-card:
+    14px 26px 56px -10px rgba(15, 23, 42, 0.15),
+    4px 10px 22px -4px rgba(15, 23, 42, 0.09),
+    0 0 0 1px rgba(15, 23, 42, 0.18);
+  --shadow-plate:
+    10px 20px 42px -10px rgba(15, 23, 42, 0.14),
+    3px 8px 16px -4px rgba(15, 23, 42, 0.08),
+    0 0 0 1px rgba(15, 23, 42, 0.18);
+  --shadow-hero:
+    16px 30px 64px -10px rgba(15, 23, 42, 0.16),
+    4px 10px 22px -4px rgba(15, 23, 42, 0.09),
+    0 0 0 1px rgba(15, 23, 42, 0.18);
+  --rim-top: rgba(255, 255, 255, 0.90);
+  --rim-left: rgba(255, 255, 255, 0.55);
+  --rim-bottom: rgba(15, 23, 42, 0.14);
+  --sheen-grad: linear-gradient(
+    126deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.02) 24%,
+    transparent 46%
+  );
+  --occluded-ink: rgba(15, 23, 42, 0.14);
+  --occluded-accent-mix: 22%;
+  --connector-opacity: 0.92;
+  --halo-ring: rgba(255, 255, 255, 0.96);
+}
+
+/* Blueprint architectural drafting sheet overlays */
+.bp-grid-bg {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.046) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.046) 1px, transparent 1px),
+    linear-gradient(to right, rgba(15, 23, 42, 0.075) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.075) 1px, transparent 1px);
+  background-size: 40px 40px, 40px 40px, 160px 160px, 160px 160px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bp-drafting-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.bp-margin-top {
+  position: absolute;
+  right: 52px;
+  top: 44px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--meta);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.bp-axis-x {
+  position: absolute;
+  bottom: 12px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--meta);
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  z-index: 6;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -1835,7 +2346,7 @@ html, body {
   z-index: 25;
 }
 
-.sc-canvas > :not(.sc-studio-keylight):not(.sc-ambient-bounce):not(.sc-grain):not(.sc-connectors):not(.gw-collage-title-block):not(.gw-collage-slot):not(.gw-foreground):not(.ws-staged-left):not(.ws-staged-arena) {
+.sc-canvas > :not(.sc-studio-keylight):not(.sc-ambient-bounce):not(.sc-grain):not(.sc-connectors):not(.bp-grid-bg):not(.bp-drafting-svg):not(.bp-margin-top):not(.bp-axis-x):not(.sp-bg-shift):not(.sp-seam-ray):not(.gw-collage-title-block):not(.gw-collage-slot):not(.gw-foreground):not(.ws-staged-left):not(.ws-staged-arena):not(.dp-sculp-tag):not(.dp-desktop-frame):not(.dp-mobile-wrap):not(.dp-footer-meta):not(.cl-left-col):not(.cl-sculp-tag):not(.cl-shot-frame):not(.cl-shot-caption):not(.wc-stage-sculp):not(.wc-loupe-sculp):not(.wc-loupe-card):not(.wc-bp-sculp):not(.wc-bp-viewport-label):not(.wc-bp-meta) {
   position: relative;
   z-index: 2;
 }
@@ -1844,7 +2355,12 @@ html, body {
 .sc-frame::after,
 .wc-window-frame::after,
 .wc-callout-frame::after,
+.wc-loupe-card::after,
+.wc-bp-specimen::after,
 .ba-frame::after,
+.sp-frame::after,
+.dp-desktop-frame::after,
+.cl-shot-frame::after,
 .ws-step-card::after,
 .ws-stage-plane::after,
 .mb-card::after,
@@ -1968,6 +2484,78 @@ html, body {
   border-radius: 7px;
   object-fit: contain;
   display: block;
+}
+
+.sc-brand-dot {
+  display: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 45%, transparent);
+  flex: none;
+}
+
+.theme-blueprint-grid .sc-brand-dot {
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+.layout-split-compare .sc-brand,
+.layout-device-pair .sc-brand,
+.layout-changelog-card .sc-brand,
+.layout-window-callout.wc-mode-stage .sc-brand,
+.layout-window-callout.wc-mode-loupe .sc-brand,
+.layout-window-callout.wc-mode-blueprint .sc-brand {
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--eyebrow-ink);
+}
+
+.layout-split-compare .sc-brand-dot,
+.layout-device-pair .sc-brand-dot,
+.layout-changelog-card .sc-brand-dot,
+.layout-window-callout.wc-mode-stage .sc-brand-dot,
+.layout-window-callout.wc-mode-loupe .sc-brand-dot,
+.layout-window-callout.wc-mode-blueprint .sc-brand-dot {
+  display: inline-block;
+}
+
+.layout-split-compare .sc-brand-icon,
+.layout-device-pair .sc-brand-icon,
+.layout-changelog-card .sc-brand-icon,
+.layout-window-callout.wc-mode-stage .sc-brand-icon,
+.layout-window-callout.wc-mode-loupe .sc-brand-icon,
+.layout-window-callout.wc-mode-blueprint .sc-brand-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+}
+
+.layout-split-compare .sc-brand-name,
+.layout-device-pair .sc-brand-name,
+.layout-changelog-card .sc-brand-name,
+.layout-window-callout.wc-mode-stage .sc-brand-name,
+.layout-window-callout.wc-mode-loupe .sc-brand-name,
+.layout-window-callout.wc-mode-blueprint .sc-brand-name {
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--eyebrow-ink);
+}
+
+.layout-split-compare .sc-brand-tag,
+.layout-device-pair .sc-brand-tag,
+.layout-changelog-card .sc-brand-tag,
+.layout-window-callout.wc-mode-stage .sc-brand-tag,
+.layout-window-callout.wc-mode-loupe .sc-brand-tag,
+.layout-window-callout.wc-mode-blueprint .sc-brand-tag {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  color: var(--eyebrow-ink);
 }
 
 .theme-dark-studio .sc-brand-icon {
@@ -4376,6 +4964,1422 @@ html, body {
 .layout-workflow-steps.is-tall .ws-flow.is-vertical .ws-arrow {
   height: 28px;
 }
+
+/* ---------- 6b. window-callout: 0-callout Stage Mode ---------- */
+.layout-window-callout.wc-mode-stage {
+  padding: 34px 72px 32px;
+  gap: 0;
+}
+
+.layout-window-callout.wc-mode-stage .wc-header {
+  gap: 8px;
+  max-width: 780px;
+}
+
+.layout-window-callout.wc-mode-stage .sc-title {
+  font-size: 44px;
+  line-height: 1.08;
+  letter-spacing: -0.032em;
+}
+
+.layout-window-callout.wc-mode-stage .sc-title.is-cjk {
+  font-size: 40px;
+}
+
+.layout-window-callout.wc-mode-stage .sc-subtitle {
+  font-size: 17px;
+  line-height: 1.42;
+  max-width: 720px;
+}
+
+.wc-stage-center {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 38px;
+  z-index: 4;
+}
+
+.wc-stage-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.wc-stage-sculp {
+  position: absolute;
+  right: 2px;
+  top: -48px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 84px;
+  line-height: 0.85;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--occluded-ink);
+  z-index: 1;
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.wc-stage-sculp.is-cjk {
+  font-size: 62px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  top: -44px;
+}
+
+.wc-stage-bezel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  z-index: 3;
+  box-shadow: var(--shadow-hero);
+  display: flex;
+}
+
+.theme-wallpaper-stage .wc-stage-bezel {
+  padding: 8px;
+  border-radius: 22px;
+  background: var(--glass-bg);
+  box-shadow:
+    0 42px 104px -14px rgba(6, 4, 18, 0.76),
+    0 18px 40px -8px rgba(6, 4, 18, 0.56),
+    0 0 92px -12px color-mix(in srgb, var(--accent) 42%, rgba(235, 134, 102, 0.30)),
+    0 0 0 1px rgba(255, 255, 255, 0.24),
+    inset 0 1.4px 0 rgba(255, 255, 255, 0.48),
+    inset 1.2px 0 0 rgba(255, 255, 255, 0.22);
+}
+
+.wc-stage-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 15px;
+  overflow: hidden;
+  background: var(--frame-bg);
+}
+
+.theme-wallpaper-stage .wc-stage-inner {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.42);
+}
+
+.wc-stage-inner img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.wc-stage-inner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--sheen-grad);
+  box-shadow:
+    inset 0 1.2px 0 var(--rim-top),
+    inset 1px 0 0 var(--rim-left),
+    inset 0 -1px 0 var(--rim-bottom);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.theme-wallpaper-stage .wc-stage-inner::after {
+  box-shadow: none;
+}
+
+.layout-window-callout.wc-mode-stage .sc-footer {
+  margin-top: 16px;
+  align-self: center;
+}
+
+.layout-window-callout.wc-mode-stage.orient-portrait,
+.layout-window-callout.wc-mode-stage.orient-square {
+  padding: 44px 48px 40px;
+}
+
+.layout-window-callout.wc-mode-stage.orient-portrait .wc-stage-center,
+.layout-window-callout.wc-mode-stage.orient-square .wc-stage-center {
+  justify-content: center;
+  padding-top: 52px;
+}
+
+/* ---------- 6c. window-callout: 1-callout Single-Point Detail Loupe Mode ---------- */
+.layout-window-callout.wc-mode-loupe {
+  padding: 40px 72px 44px;
+  gap: 0;
+}
+
+.layout-window-callout.wc-mode-loupe .wc-header {
+  gap: 10px;
+  max-width: 780px;
+}
+
+.layout-window-callout.wc-mode-loupe .sc-title {
+  font-size: 44px;
+  line-height: 1.1;
+  letter-spacing: -0.032em;
+}
+
+.layout-window-callout.wc-mode-loupe .sc-title.is-cjk {
+  font-size: 40px;
+}
+
+.layout-window-callout.wc-mode-loupe .sc-subtitle {
+  font-size: 17px;
+  line-height: 1.45;
+  max-width: 740px;
+}
+
+.wc-loupe-grid {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.44fr) 92px minmax(0, 1fr);
+  align-items: center;
+  margin-top: 24px;
+  position: relative;
+  z-index: 4;
+}
+
+.wc-loupe-left {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.wc-loupe-left .wc-window-wrap {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+}
+
+.wc-loupe-left .wc-window-frame {
+  border-radius: 16px;
+}
+
+.wc-focus-mask-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.wc-loupe-focus-box {
+  position: absolute;
+  border-radius: 10px;
+  border: 2px solid var(--accent);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.25) inset,
+    0 0 32px color-mix(in srgb, var(--accent) 56%, transparent),
+    0 0 10px color-mix(in srgb, var(--accent) 45%, transparent);
+  z-index: 4;
+  pointer-events: none;
+}
+
+.wc-loupe-right {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  z-index: 5;
+}
+
+.wc-loupe-sculp {
+  position: relative;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 136px;
+  line-height: 0.85;
+  letter-spacing: -0.05em;
+  color: color-mix(in srgb, var(--accent) 36%, transparent);
+  margin-left: 2px;
+  margin-bottom: -24px;
+  z-index: 1;
+  user-select: none;
+  pointer-events: none;
+}
+
+.wc-loupe-card {
+  position: relative;
+  width: 100%;
+  border-radius: 18px;
+  background: var(--surface-bg);
+  z-index: 4;
+  box-shadow:
+    var(--shadow-hero),
+    0 0 64px -10px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.wc-loupe-card-inner {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.wc-loupe-media {
+  position: relative;
+  width: 100%;
+  height: 236px;
+  background: var(--frame-bg);
+  overflow: hidden;
+  flex: none;
+}
+
+.wc-loupe-media img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.wc-loupe-body {
+  padding: 24px 28px 26px;
+  border-top: 1px solid var(--hairline);
+  background: var(--surface-bg);
+}
+
+.theme-dark-studio .wc-loupe-body {
+  background: linear-gradient(180deg, #171a22 0%, #13161d 100%);
+}
+
+.wc-loupe-kicker {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.wc-loupe-title {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+
+.wc-loupe-desc {
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--caption-ink);
+}
+
+.wc-loupe-metrics {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--meta);
+}
+
+.wc-loupe-metrics strong {
+  color: var(--body-ink);
+  font-weight: 500;
+}
+
+.wc-loupe-card .wc-target-dot {
+  left: -5px;
+  top: 138px;
+  width: 10px;
+  height: 10px;
+  transform: translateY(-50%);
+}
+
+.layout-window-callout.wc-mode-loupe.orient-portrait,
+.layout-window-callout.wc-mode-loupe.orient-square {
+  padding: 40px 44px 40px;
+}
+
+.layout-window-callout.wc-mode-loupe.orient-portrait .wc-loupe-grid,
+.layout-window-callout.wc-mode-loupe.orient-square .wc-loupe-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  margin-top: 24px;
+}
+
+.layout-window-callout.wc-mode-loupe.orient-portrait .wc-loupe-gutter,
+.layout-window-callout.wc-mode-loupe.orient-square .wc-loupe-gutter {
+  display: none;
+}
+
+.layout-window-callout.wc-mode-loupe.orient-portrait .wc-loupe-left,
+.layout-window-callout.wc-mode-loupe.orient-square .wc-loupe-left {
+  width: 100%;
+  flex: 1 1 0;
+  height: auto;
+  align-items: center;
+}
+
+.layout-window-callout.wc-mode-loupe.orient-portrait .wc-loupe-right,
+.layout-window-callout.wc-mode-loupe.orient-square .wc-loupe-right {
+  width: 100%;
+  flex: none;
+}
+
+.layout-window-callout.wc-mode-loupe.orient-portrait .wc-loupe-sculp,
+.layout-window-callout.wc-mode-loupe.orient-square .wc-loupe-sculp {
+  font-size: 96px;
+  margin-bottom: -18px;
+}
+
+.layout-window-callout.wc-mode-loupe.orient-portrait .wc-loupe-media,
+.layout-window-callout.wc-mode-loupe.orient-square .wc-loupe-media {
+  height: 220px;
+}
+
+.layout-window-callout.wc-mode-loupe.orient-portrait .wc-loupe-card .wc-target-dot,
+.layout-window-callout.wc-mode-loupe.orient-square .wc-loupe-card .wc-target-dot {
+  left: 50%;
+  top: -5px;
+  transform: translateX(-50%);
+}
+
+/* ---------- 6d. window-callout: Blueprint CAD Mode ---------- */
+.layout-window-callout.wc-mode-blueprint {
+  padding: 34px 72px 72px;
+  gap: 0;
+}
+
+.layout-window-callout.wc-mode-blueprint .wc-header {
+  gap: 8px;
+  max-width: 860px;
+}
+
+.layout-window-callout.wc-mode-blueprint .sc-title {
+  font-size: 42px;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.layout-window-callout.wc-mode-blueprint .sc-title.is-cjk {
+  font-size: 38px;
+}
+
+.layout-window-callout.wc-mode-blueprint .sc-subtitle {
+  font-size: 17px;
+  line-height: 1.42;
+  max-width: 820px;
+}
+
+.wc-bp-body {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px 380px;
+  align-items: stretch;
+  margin-top: 64px;
+  position: relative;
+  z-index: 4;
+}
+
+.wc-bp-left {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.wc-bp-left .wc-window-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+}
+
+.wc-bp-sculp {
+  position: absolute;
+  right: 36px;
+  top: -44px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 68px;
+  line-height: 0.85;
+  letter-spacing: -0.02em;
+  color: color-mix(in srgb, var(--accent) 22%, transparent);
+  z-index: 1;
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.wc-bp-sculp.is-cjk {
+  font-size: 52px;
+  font-weight: 700;
+}
+
+.wc-bp-specimen {
+  border-radius: 10px;
+  z-index: 3;
+}
+
+.wc-bp-right {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 0;
+  padding-top: 40px;
+  z-index: 5;
+}
+
+.wc-bp-items {
+  display: flex;
+  flex-direction: column;
+  gap: 56px;
+}
+
+.wc-bp-items.count-3 {
+  gap: 32px;
+}
+
+.wc-bp-items.count-4 {
+  gap: 20px;
+}
+
+.wc-bp-item {
+  position: relative;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}
+
+.wc-bp-target-dot {
+  position: absolute;
+  left: 0;
+  top: -1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 8;
+}
+
+.wc-bp-code {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.wc-bp-heading {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.24;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.wc-bp-text {
+  font-size: 15px;
+  line-height: 1.52;
+  color: var(--muted);
+}
+
+.wc-bp-meta {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--meta);
+}
+
+.wc-bp-meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wc-bp-meta-row em {
+  font-style: normal;
+  color: var(--meta);
+}
+
+.wc-bp-meta-row strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.wc-bp-viewport-label {
+  position: absolute;
+  bottom: 44px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--meta);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0 8px;
+  z-index: 6;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.layout-window-callout.wc-mode-blueprint.orient-portrait,
+.layout-window-callout.wc-mode-blueprint.orient-square {
+  padding: 42px 44px 52px;
+}
+
+.layout-window-callout.wc-mode-blueprint.orient-portrait .wc-bp-body,
+.layout-window-callout.wc-mode-blueprint.orient-square .wc-bp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  margin-top: 34px;
+}
+
+.layout-window-callout.wc-mode-blueprint.orient-portrait .wc-bp-gutter,
+.layout-window-callout.wc-mode-blueprint.orient-square .wc-bp-gutter {
+  display: none;
+}
+
+.layout-window-callout.wc-mode-blueprint.orient-portrait .wc-bp-left,
+.layout-window-callout.wc-mode-blueprint.orient-square .wc-bp-left {
+  flex: none;
+  width: 100%;
+  align-items: center;
+}
+
+.layout-window-callout.wc-mode-blueprint.orient-portrait .wc-bp-right,
+.layout-window-callout.wc-mode-blueprint.orient-square .wc-bp-right {
+  width: 100%;
+  padding-top: 0;
+  gap: 20px;
+}
+
+.layout-window-callout.wc-mode-blueprint.orient-portrait .wc-bp-items,
+.layout-window-callout.wc-mode-blueprint.orient-square .wc-bp-items {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 22px;
+}
+
+.layout-window-callout.wc-mode-blueprint.orient-portrait .wc-bp-target-dot,
+.layout-window-callout.wc-mode-blueprint.orient-square .wc-bp-target-dot {
+  display: none;
+}
+
+/* ---------- 9. split-compare ---------- */
+.layout-split-compare {
+  display: flex;
+  flex-direction: column;
+  padding: 32px 72px 18px;
+  gap: 0;
+}
+
+.sp-bg-shift {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(15, 23, 42, 0.045) 0%,
+      rgba(15, 23, 42, 0.025) calc(var(--split-pct) - 0.1%),
+      color-mix(in srgb, var(--accent) 5%, rgba(255, 255, 255, 0.24)) calc(var(--split-pct) + 0.1%),
+      color-mix(in srgb, var(--accent) 4%, rgba(255, 255, 255, 0.12)) 100%
+    );
+}
+
+.theme-dark-studio .sp-bg-shift,
+.theme-wallpaper-stage .sp-bg-shift {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.22) 0%,
+      rgba(0, 0, 0, 0.10) calc(var(--split-pct) - 0.1%),
+      color-mix(in srgb, var(--accent) 9%, transparent) calc(var(--split-pct) + 0.1%),
+      color-mix(in srgb, var(--accent) 5%, transparent) 100%
+    );
+}
+
+.sp-seam-ray {
+  position: absolute;
+  left: var(--split-pct);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.03) 0%,
+    color-mix(in srgb, var(--accent) 24%, transparent) 24%,
+    color-mix(in srgb, var(--accent) 28%, transparent) 85%,
+    rgba(15, 23, 42, 0.04) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.sp-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  max-width: 780px;
+  flex: none;
+  z-index: 5;
+}
+
+.layout-split-compare .sc-title {
+  font-size: 44px;
+  line-height: 1.1;
+}
+
+.layout-split-compare .sc-title.is-cjk {
+  font-size: 40px;
+}
+
+.layout-split-compare .sc-subtitle {
+  font-size: 17px;
+  line-height: 1.42;
+}
+
+.sp-stage {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 8px;
+  z-index: 3;
+}
+
+.sp-column {
+  width: 1160px;
+  max-width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sp-occluded-row {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 4px;
+  margin-bottom: -15px;
+  z-index: 1;
+  pointer-events: none;
+  flex: none;
+}
+
+.sp-sculp-label {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 70px;
+  line-height: 0.85;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.sp-sculp-label.is-cjk {
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.sp-sculp-before {
+  color: var(--occluded-ink);
+}
+
+.sp-sculp-after {
+  color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.sp-frame-wrap {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  border-radius: 16px;
+  z-index: 3;
+  box-shadow: var(--shadow-hero);
+}
+
+.sp-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--frame-bg);
+}
+
+.sp-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.sp-img-left {
+  clip-path: inset(0 calc(100% - var(--split-pct)) 0 0);
+}
+
+.sp-img-right {
+  clip-path: inset(0 0 0 var(--split-pct));
+}
+
+.sp-divider-line {
+  position: absolute;
+  left: var(--split-pct);
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, #ffffff 50%, rgba(255, 255, 255, 0.92) 100%);
+  box-shadow:
+    0 0 22px 2px color-mix(in srgb, var(--accent) 55%, transparent),
+    0 0 6px 1px rgba(15, 23, 42, 0.24);
+  z-index: 8;
+  pointer-events: none;
+}
+
+.sp-divider-handle {
+  position: absolute;
+  left: var(--split-pct);
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1.5px solid rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 10px 28px rgba(15, 23, 42, 0.26),
+    0 2px 8px color-mix(in srgb, var(--accent) 32%, transparent),
+    inset 0 1px 0 #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9;
+  pointer-events: none;
+}
+
+.sp-caption-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--muted);
+  flex: none;
+  z-index: 5;
+}
+
+.sp-caption-right {
+  color: var(--accent);
+  font-weight: 500;
+  text-align: right;
+}
+
+.layout-split-compare.orient-portrait,
+.layout-split-compare.orient-square {
+  padding: 40px 44px 30px;
+}
+
+.layout-split-compare.orient-portrait .sp-column,
+.layout-split-compare.orient-square .sp-column {
+  width: 100%;
+}
+
+.layout-split-compare.orient-portrait .sp-sculp-label,
+.layout-split-compare.orient-square .sp-sculp-label {
+  font-size: 54px;
+}
+
+.layout-split-compare.orient-portrait .sp-sculp-label.is-cjk,
+.layout-split-compare.orient-square .sp-sculp-label.is-cjk {
+  font-size: 44px;
+}
+
+/* ---------- 10. device-pair ---------- */
+.layout-device-pair {
+  padding: 40px 72px 16px;
+}
+
+.dp-header {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 740px;
+  z-index: 5;
+}
+
+.layout-device-pair .sc-title {
+  font-size: 46px;
+  line-height: 1.1;
+}
+
+.layout-device-pair .sc-title.is-cjk {
+  font-size: 42px;
+}
+
+.layout-device-pair .sc-subtitle {
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.dp-sculp-tag {
+  position: absolute;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 68px;
+  line-height: 0.85;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.dp-sculp-tag.is-cjk {
+  font-size: 50px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.dp-sculp-desktop {
+  left: 53.5%;
+  top: 158px;
+  color: var(--occluded-ink);
+  z-index: 1;
+}
+
+.dp-sculp-mobile {
+  right: 88px;
+  top: 186px;
+  color: color-mix(in srgb, var(--accent) 26%, transparent);
+  z-index: 3;
+}
+
+.dp-desktop-frame {
+  position: absolute;
+  left: 72px;
+  top: 200px;
+  width: 72.75%;
+  height: calc(100% - 248px);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--frame-bg);
+  z-index: 2;
+  box-shadow: var(--shadow-hero);
+}
+
+.dp-desktop-frame img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.dp-mobile-wrap {
+  position: absolute;
+  right: 92px;
+  top: 228px;
+  width: 312px;
+  height: calc(100% - 268px);
+  z-index: 4;
+  border-radius: 44px;
+  padding: 9px;
+  background: linear-gradient(150deg, #32363e 0%, #191c22 45%, #111318 100%);
+  box-shadow:
+    -18px 26px 56px -8px rgba(15, 23, 42, 0.34),
+    14px 32px 68px -10px rgba(24, 22, 18, 0.30),
+    0 8px 20px -4px rgba(15, 23, 42, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.18),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.42),
+    inset 1.5px 0 0 rgba(255, 255, 255, 0.20);
+}
+
+.dp-mobile-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 35px;
+  overflow: hidden;
+  background: var(--frame-bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.dp-mobile-safe-top {
+  height: 30px;
+  flex: 0 0 30px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dp-mobile-safe-top.is-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: transparent;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.dp-dynamic-island {
+  width: 78px;
+  height: 20px;
+  border-radius: 12px;
+  background: #0c0e12;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.dp-mobile-img-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dp-mobile-img-wrap img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.dp-mobile-home-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  width: 96px;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.24);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.dp-mobile-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: 35px;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+  z-index: 6;
+}
+
+.dp-footer-meta {
+  position: absolute;
+  left: 72px;
+  bottom: 16px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--meta);
+  z-index: 5;
+}
+
+.layout-device-pair.orient-portrait,
+.layout-device-pair.orient-square {
+  padding: 40px 44px 32px;
+}
+
+.layout-device-pair.orient-portrait .dp-desktop-frame {
+  left: 44px;
+  top: 248px;
+  width: calc(100% - 88px);
+  height: 580px;
+}
+
+.layout-device-pair.orient-portrait.is-tall .dp-desktop-frame {
+  top: 270px;
+  height: 680px;
+}
+
+.layout-device-pair.orient-portrait .dp-sculp-desktop {
+  left: 52px;
+  top: 208px;
+  font-size: 56px;
+}
+
+.layout-device-pair.orient-portrait.is-tall .dp-sculp-desktop {
+  top: 230px;
+}
+
+.layout-device-pair.orient-portrait .dp-mobile-wrap {
+  right: 54px;
+  top: 590px;
+  width: 340px;
+  height: 700px;
+}
+
+.layout-device-pair.orient-portrait.is-tall .dp-mobile-wrap {
+  right: 60px;
+  top: 840px;
+  width: 400px;
+  height: 820px;
+}
+
+.layout-device-pair.orient-portrait .dp-sculp-mobile {
+  right: 68px;
+  top: 548px;
+  font-size: 56px;
+}
+
+.layout-device-pair.orient-portrait.is-tall .dp-sculp-mobile {
+  top: 794px;
+}
+
+.layout-device-pair.orient-portrait .dp-footer-meta {
+  left: 44px;
+  bottom: 24px;
+}
+
+.layout-device-pair.orient-square .dp-desktop-frame {
+  left: 44px;
+  top: 224px;
+  width: 82%;
+  height: 620px;
+}
+
+.layout-device-pair.orient-square .dp-sculp-desktop {
+  left: 46%;
+  top: 184px;
+  font-size: 56px;
+}
+
+.layout-device-pair.orient-square .dp-mobile-wrap {
+  right: 44px;
+  top: 340px;
+  width: 310px;
+  height: 640px;
+}
+
+.layout-device-pair.orient-square .dp-sculp-mobile {
+  right: 62px;
+  top: 298px;
+  font-size: 56px;
+}
+
+.layout-device-pair.orient-square .dp-footer-meta {
+  left: 44px;
+  bottom: 24px;
+}
+
+/* ---------- 11. changelog-card ---------- */
+.layout-changelog-card {
+  padding: 52px 72px 48px;
+}
+
+.cl-left-col {
+  position: absolute;
+  left: 72px;
+  top: 52px;
+  bottom: 48px;
+  width: 33.5%;
+  display: flex;
+  flex-direction: column;
+  z-index: 4;
+}
+
+.cl-left-col .sc-brand {
+  margin-bottom: 24px;
+}
+
+.cl-version-stage {
+  position: relative;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 24px;
+}
+
+.cl-version-num {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 132px;
+  line-height: 0.86;
+  letter-spacing: -0.045em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.cl-version-v {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 74px;
+  color: var(--meta);
+  margin-right: 4px;
+  vertical-align: 2px;
+}
+
+.cl-version-dot {
+  color: var(--accent);
+}
+
+.cl-release-title {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 32px;
+  line-height: 1.18;
+  letter-spacing: -0.028em;
+  color: var(--ink);
+  margin-bottom: 22px;
+}
+
+.cl-release-title.is-cjk {
+  font-size: 30px;
+  letter-spacing: -0.014em;
+  line-height: 1.24;
+}
+
+.cl-highlights {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--hairline);
+}
+
+.cl-hl-item {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--hairline);
+  align-items: start;
+}
+
+.cl-highlights.count-4 .cl-hl-item {
+  padding: 13px 0;
+}
+
+.cl-hl-idx {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent);
+  padding-top: 3px;
+}
+
+.cl-hl-title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  line-height: 1.26;
+  color: var(--ink);
+  margin-bottom: 5px;
+}
+
+.cl-hl-desc {
+  font-size: 15px;
+  line-height: 1.48;
+  color: var(--muted);
+}
+
+.cl-left-footer {
+  margin-top: auto;
+  padding-top: 16px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--meta);
+  letter-spacing: 0.02em;
+}
+
+.cl-sculp-tag {
+  position: absolute;
+  right: 76px;
+  top: 94px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 92px;
+  line-height: 0.85;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--occluded-ink);
+  z-index: 1;
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.cl-sculp-tag.is-cjk {
+  font-size: 64px;
+  font-weight: 700;
+  text-transform: none;
+  top: 104px;
+}
+
+.cl-shot-frame {
+  position: absolute;
+  left: 41.75%;
+  top: 150px;
+  width: calc(58.25% - 72px);
+  height: calc(100% - 278px);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--frame-bg);
+  z-index: 3;
+  box-shadow: var(--shadow-hero);
+}
+
+.cl-shot-frame img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.cl-shot-caption {
+  position: absolute;
+  left: 41.75%;
+  right: 72px;
+  bottom: 84px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--muted);
+  z-index: 4;
+}
+
+.layout-changelog-card.orient-portrait,
+.layout-changelog-card.orient-square {
+  display: flex;
+  flex-direction: column;
+  padding: 40px 44px 36px;
+  gap: 22px;
+}
+
+.layout-changelog-card.orient-portrait .cl-left-col,
+.layout-changelog-card.orient-square .cl-left-col {
+  position: relative;
+  left: auto;
+  top: auto;
+  bottom: auto;
+  width: 100%;
+  display: contents;
+}
+
+.layout-changelog-card.orient-portrait .cl-top-block,
+.layout-changelog-card.orient-square .cl-top-block {
+  order: 1;
+}
+
+.layout-changelog-card.orient-portrait .cl-version-num,
+.layout-changelog-card.orient-square .cl-version-num {
+  font-size: 96px;
+}
+
+.layout-changelog-card.orient-portrait .cl-version-v,
+.layout-changelog-card.orient-square .cl-version-v {
+  font-size: 56px;
+}
+
+.layout-changelog-card.orient-portrait .cl-shot-stage,
+.layout-changelog-card.orient-square .cl-shot-stage {
+  order: 2;
+  position: relative;
+  flex: 1 1 0;
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+}
+
+.layout-changelog-card.orient-portrait .cl-sculp-tag,
+.layout-changelog-card.orient-square .cl-sculp-tag {
+  position: relative;
+  right: auto;
+  top: auto;
+  align-self: flex-end;
+  font-size: 62px;
+  margin-bottom: -14px;
+  margin-right: 4px;
+}
+
+.layout-changelog-card.orient-portrait .cl-shot-frame,
+.layout-changelog-card.orient-square .cl-shot-frame {
+  position: relative;
+  left: auto;
+  top: auto;
+  width: 100%;
+  height: auto;
+  flex: 1 1 0;
+  min-height: 280px;
+}
+
+.layout-changelog-card.orient-portrait .cl-shot-caption,
+.layout-changelog-card.orient-square .cl-shot-caption {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  padding-top: 12px;
+}
+
+.layout-changelog-card.orient-portrait .cl-highlights,
+.layout-changelog-card.orient-square .cl-highlights {
+  order: 3;
+}
+
+.layout-changelog-card.orient-landscape .cl-shot-stage {
+  display: contents;
+}
+
+.layout-changelog-card.orient-portrait .cl-left-footer,
+.layout-changelog-card.orient-square .cl-left-footer {
+  order: 4;
+  margin-top: 0;
+  padding-top: 4px;
+}
 """
 
 
@@ -4523,7 +6527,292 @@ window.__positionShowcaseConnectors = function () {
     });
   }
 
-  // 2. window-callout sizing, in-plane reticles, zero-drift connectors & portrait pins
+  // 2a. window-callout Stage Mode (0 callouts): auto-hug centered window to native ratio
+  if (canvas.classList.contains('wc-mode-stage')) {
+    const stageCenter = document.querySelector('.wc-stage-center');
+    const stageWrap = document.querySelector('.wc-stage-wrap');
+    const stageImg = stageWrap ? stageWrap.querySelector('.wc-stage-inner img') : null;
+    if (stageCenter && stageWrap && stageImg && stageImg.naturalWidth > 0 && stageImg.naturalHeight > 0) {
+      const centerCs = getComputedStyle(stageCenter);
+      const padT = parseFloat(centerCs.paddingTop) || 0;
+      const padB = parseFloat(centerCs.paddingBottom) || 0;
+      const stageRect = stageCenter.getBoundingClientRect();
+      const availW = Math.floor(stageRect.width);
+      const availH = Math.max(180, Math.floor(stageRect.height - padT - padB));
+      const bezelPad = canvas.classList.contains('theme-wallpaper-stage') ? 16 : 0;
+      const innerAvailW = Math.max(160, availW - bezelPad);
+      const innerAvailH = Math.max(160, availH - bezelPad);
+      const fitScale = Math.min(innerAvailW / stageImg.naturalWidth, innerAvailH / stageImg.naturalHeight);
+      const boxW = Math.max(260, Math.round(stageImg.naturalWidth * fitScale) + bezelPad);
+      const boxH = Math.max(180, Math.round(stageImg.naturalHeight * fitScale) + bezelPad);
+      stageWrap.style.width = `${boxW}px`;
+      stageWrap.style.height = `${boxH}px`;
+    }
+    return;
+  }
+
+  // 2b. window-callout Single-Point Detail Loupe Mode (1 callout)
+  if (canvas.classList.contains('wc-mode-loupe')) {
+    const mainWindow = document.querySelector('.wc-window-frame');
+    const mainWrap = document.querySelector('.wc-window-wrap');
+    const mainLeft = document.querySelector('.wc-loupe-left');
+    const loupeCard = document.querySelector('.wc-loupe-card');
+    const isLandscape = canvas.classList.contains('orient-landscape');
+    if (mainWindow && loupeCard) {
+      const winImg = mainWindow.querySelector('img');
+      if (winImg && winImg.naturalWidth > 0 && winImg.naturalHeight > 0 && mainWrap && mainLeft) {
+        const stageRect = mainLeft.getBoundingClientRect();
+        const availW = Math.floor(stageRect.width);
+        const availH = Math.max(180, Math.floor(stageRect.height));
+        if (availW > 120 && availH > 120) {
+          const fitScale = Math.min(availW / winImg.naturalWidth, availH / winImg.naturalHeight);
+          const boxW = Math.max(260, Math.round(winImg.naturalWidth * fitScale));
+          const boxH = Math.max(180, Math.round(winImg.naturalHeight * fitScale));
+          mainWrap.style.width = `${boxW}px`;
+          mainWrap.style.height = `${boxH}px`;
+        }
+      }
+
+      const localImgRect = winImg
+        ? getRenderedImageRect(winImg, mainWindow)
+        : { left: 0, top: 0, width: mainWindow.clientWidth, height: mainWindow.clientHeight };
+
+      const txPct = parseFloat(loupeCard.getAttribute('data-target-x') || '26');
+      const tyPct = parseFloat(loupeCard.getAttribute('data-target-y') || '89');
+      const twPct = parseFloat(loupeCard.getAttribute('data-target-w') || '48');
+      const thPct = parseFloat(loupeCard.getAttribute('data-target-h') || '18');
+
+      const rw = Math.max(24, localImgRect.width * (twPct / 100));
+      const rh = Math.max(24, localImgRect.height * (thPct / 100));
+      const rx = Math.max(4, Math.min(mainWindow.clientWidth - rw - 4, localImgRect.left + localImgRect.width * (txPct / 100) - rw / 2));
+      const ry = Math.max(4, Math.min(mainWindow.clientHeight - rh - 4, localImgRect.top + localImgRect.height * (tyPct / 100) - rh / 2));
+
+      const focusBox = mainWindow.querySelector('.wc-loupe-focus-box');
+      if (focusBox) {
+        focusBox.style.left = `${rx.toFixed(1)}px`;
+        focusBox.style.top = `${ry.toFixed(1)}px`;
+        focusBox.style.width = `${rw.toFixed(1)}px`;
+        focusBox.style.height = `${rh.toFixed(1)}px`;
+        const anchor = focusBox.querySelector('.wc-anchor-dot');
+        if (anchor) {
+          if (isLandscape) {
+            anchor.style.right = '-5px';
+            anchor.style.top = '50%';
+            anchor.style.left = '';
+            anchor.style.bottom = '';
+            anchor.style.transform = 'translateY(-50%)';
+          } else {
+            anchor.style.left = '50%';
+            anchor.style.bottom = '-5px';
+            anchor.style.right = '';
+            anchor.style.top = '';
+            anchor.style.transform = 'translateX(-50%)';
+          }
+        }
+      }
+
+      const maskSvg = mainWindow.querySelector('.wc-focus-mask-svg');
+      if (maskSvg) {
+        const mw = mainWindow.clientWidth || 796;
+        const mh = mainWindow.clientHeight || 661;
+        maskSvg.setAttribute('viewBox', `0 0 ${mw} ${mh}`);
+        const bgRect = maskSvg.querySelector('.wc-mask-bg');
+        const dimRect = maskSvg.querySelector('.wc-mask-dim');
+        const holeRect = maskSvg.querySelector('.wc-mask-hole');
+        if (bgRect) { bgRect.setAttribute('width', String(mw)); bgRect.setAttribute('height', String(mh)); }
+        if (dimRect) { dimRect.setAttribute('width', String(mw)); dimRect.setAttribute('height', String(mh)); }
+        if (holeRect) {
+          holeRect.setAttribute('x', rx.toFixed(1));
+          holeRect.setAttribute('y', ry.toFixed(1));
+          holeRect.setAttribute('width', rw.toFixed(1));
+          holeRect.setAttribute('height', rh.toFixed(1));
+        }
+      }
+
+      if (svg && connLayer && focusBox) {
+        const anchor = focusBox.querySelector('.wc-anchor-dot') || focusBox;
+        const dstDot = loupeCard.querySelector('.wc-target-dot');
+        if (dstDot) {
+          const pA = centerInCanvas(anchor);
+          const pB = centerInCanvas(dstDot);
+          let d;
+          if (isLandscape) {
+            const c1x = pA.x + (pB.x - pA.x) * 0.50;
+            const c2x = pA.x + (pB.x - pA.x) * 0.65;
+            d = `M ${pA.x.toFixed(1)} ${pA.y.toFixed(1)} C ${c1x.toFixed(1)} ${pA.y.toFixed(1)}, ${c2x.toFixed(1)} ${pB.y.toFixed(1)}, ${pB.x.toFixed(1)} ${pB.y.toFixed(1)}`;
+          } else {
+            const spanY = Math.max(40, pB.y - pA.y);
+            const lift = Math.max(46, Math.min(140, spanY * 0.48));
+            d = `M ${pA.x.toFixed(1)} ${pA.y.toFixed(1)} C ${pA.x.toFixed(1)} ${(pA.y + lift).toFixed(1)}, ${pB.x.toFixed(1)} ${(pB.y - lift).toFixed(1)}, ${pB.x.toFixed(1)} ${pB.y.toFixed(1)}`;
+          }
+          const halo = document.createElementNS(ns, 'path');
+          halo.setAttribute('d', d);
+          halo.setAttribute('fill', 'none');
+          halo.setAttribute('stroke', accent);
+          halo.setAttribute('stroke-opacity', '0.32');
+          halo.setAttribute('stroke-width', '6');
+          halo.setAttribute('stroke-linecap', 'round');
+          connLayer.appendChild(halo);
+
+          const path = document.createElementNS(ns, 'path');
+          path.setAttribute('d', d);
+          path.setAttribute('fill', 'none');
+          path.setAttribute('stroke', accent);
+          path.setAttribute('stroke-width', '2.2');
+          path.setAttribute('stroke-dasharray', '7 6');
+          path.setAttribute('stroke-linecap', 'round');
+          connLayer.appendChild(path);
+
+          const paperBase = cs.getPropertyValue('--paper-base').trim() || '#0c0e11';
+          const surfaceBg = cs.getPropertyValue('--surface-bg').trim() || '#14171e';
+          for (const [pt, ringStroke] of [[pA, paperBase], [pB, surfaceBg]]) {
+            appendDot(pt.x, pt.y, 9, accent, 0.25);
+            const dot = document.createElementNS(ns, 'circle');
+            dot.setAttribute('cx', pt.x.toFixed(1));
+            dot.setAttribute('cy', pt.y.toFixed(1));
+            dot.setAttribute('r', '5');
+            dot.setAttribute('fill', accent);
+            dot.setAttribute('stroke', ringStroke);
+            dot.setAttribute('stroke-width', '2');
+            connLayer.appendChild(dot);
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  // 2c. window-callout Blueprint CAD Mode
+  if (canvas.classList.contains('wc-mode-blueprint')) {
+    const mainWindow = document.querySelector('.wc-window-frame');
+    const mainWrap = document.querySelector('.wc-window-wrap');
+    const mainLeft = document.querySelector('.wc-bp-left');
+    const isLandscape = canvas.classList.contains('orient-landscape');
+    if (mainWindow) {
+      const winImg = mainWindow.querySelector('img');
+      if (winImg && winImg.naturalWidth > 0 && winImg.naturalHeight > 0 && mainWrap && mainLeft) {
+        if (isLandscape) {
+          const stageRect = mainLeft.getBoundingClientRect();
+          const availW = Math.floor(stageRect.width);
+          const availH = Math.max(180, Math.floor(stageRect.height));
+          if (availW > 120 && availH > 120) {
+            const fitScale = Math.min(availW / winImg.naturalWidth, availH / winImg.naturalHeight);
+            const boxW = Math.max(260, Math.round(winImg.naturalWidth * fitScale));
+            const boxH = Math.max(180, Math.round(winImg.naturalHeight * fitScale));
+            mainWrap.style.width = `${boxW}px`;
+            mainWrap.style.height = `${boxH}px`;
+          }
+        } else {
+          const natRatio = winImg.naturalWidth / winImg.naturalHeight;
+          mainWindow.style.aspectRatio = Math.max(1.0, Math.min(2.2, natRatio)).toFixed(4);
+        }
+      }
+
+      const localImgRect = winImg
+        ? getRenderedImageRect(winImg, mainWindow)
+        : { left: 0, top: 0, width: mainWindow.clientWidth, height: mainWindow.clientHeight };
+      const wRect = mainWindow.getBoundingClientRect();
+      const winLeft = wRect.left - cRect.left;
+      const winTop = wRect.top - cRect.top;
+      const winRight = wRect.right - cRect.left;
+      const winBottom = wRect.bottom - cRect.top;
+
+      // Dimension bracket under specimen plate when viewportLabel is present
+      const vpLabel = document.querySelector('.wc-bp-viewport-label');
+      if (vpLabel && svg) {
+        const bracketY = winBottom + 16;
+        const centerX = (winLeft + winRight) / 2;
+        vpLabel.style.left = `${centerX.toFixed(1)}px`;
+        vpLabel.style.top = `${bracketY.toFixed(1)}px`;
+        vpLabel.style.bottom = 'auto';
+        vpLabel.style.transform = 'translate(-50%, -50%)';
+        const lblW = vpLabel.getBoundingClientRect().width || 160;
+        const gapHalf = lblW / 2 + 12;
+
+        const dimGroup = document.createElementNS(ns, 'g');
+        dimGroup.setAttribute('stroke', 'rgba(15, 23, 42, 0.28)');
+        dimGroup.setAttribute('stroke-width', '1');
+        const segs = [
+          [winLeft, bracketY, Math.max(winLeft, centerX - gapHalf), bracketY],
+          [Math.min(winRight, centerX + gapHalf), bracketY, winRight, bracketY],
+          [winLeft, bracketY - 6, winLeft, bracketY + 6],
+          [winRight, bracketY - 6, winRight, bracketY + 6],
+        ];
+        for (const [x1, y1, x2, y2] of segs) {
+          const ln = document.createElementNS(ns, 'line');
+          ln.setAttribute('x1', x1.toFixed(1));
+          ln.setAttribute('y1', y1.toFixed(1));
+          ln.setAttribute('x2', x2.toFixed(1));
+          ln.setAttribute('y2', y2.toFixed(1));
+          dimGroup.appendChild(ln);
+        }
+        svg.appendChild(dimGroup);
+      }
+
+      if (isLandscape && svg) {
+        const bpItems = document.querySelectorAll('.wc-bp-item[data-target-x][data-target-y]');
+        const cadGroup = document.createElementNS(ns, 'g');
+        svg.appendChild(cadGroup);
+        bpItems.forEach((item) => {
+          const dstDot = item.querySelector('.wc-bp-target-dot');
+          if (!dstDot) return;
+          const txPct = parseFloat(item.getAttribute('data-target-x') || '75');
+          const tyPct = parseFloat(item.getAttribute('data-target-y') || '50');
+          const ax = winLeft + localImgRect.left + localImgRect.width * (txPct / 100);
+          const ay = winTop + localImgRect.top + localImgRect.height * (tyPct / 100);
+          const pB = centerInCanvas(dstDot);
+          const elbow1X = Math.min(pB.x - 42, winRight + 30);
+          const elbow2X = Math.min(pB.x - 14, elbow1X + 28);
+
+          const poly = document.createElementNS(ns, 'polyline');
+          poly.setAttribute(
+            'points',
+            `${ax.toFixed(1)},${ay.toFixed(1)} ${elbow1X.toFixed(1)},${ay.toFixed(1)} ${elbow2X.toFixed(1)},${pB.y.toFixed(1)} ${pB.x.toFixed(1)},${pB.y.toFixed(1)}`
+          );
+          poly.setAttribute('fill', 'none');
+          poly.setAttribute('stroke', accent);
+          poly.setAttribute('stroke-width', '1.5');
+          poly.setAttribute('stroke-dasharray', '4 4');
+          cadGroup.appendChild(poly);
+
+          const halo = document.createElementNS(ns, 'circle');
+          halo.setAttribute('cx', ax.toFixed(1));
+          halo.setAttribute('cy', ay.toFixed(1));
+          halo.setAttribute('r', '8');
+          halo.setAttribute('fill', accent);
+          halo.setAttribute('fill-opacity', '0.16');
+          cadGroup.appendChild(halo);
+
+          const orig = document.createElementNS(ns, 'circle');
+          orig.setAttribute('cx', ax.toFixed(1));
+          orig.setAttribute('cy', ay.toFixed(1));
+          orig.setAttribute('r', '4');
+          orig.setAttribute('fill', accent);
+          orig.setAttribute('stroke', '#ffffff');
+          orig.setAttribute('stroke-width', '1.6');
+          cadGroup.appendChild(orig);
+
+          const dest = document.createElementNS(ns, 'circle');
+          dest.setAttribute('cx', pB.x.toFixed(1));
+          dest.setAttribute('cy', pB.y.toFixed(1));
+          dest.setAttribute('r', '3.5');
+          dest.setAttribute('fill', accent);
+          cadGroup.appendChild(dest);
+        });
+      } else {
+        const pins = mainWindow.querySelectorAll('.wc-pin-marker[data-target-x][data-target-y]');
+        pins.forEach((pin) => {
+          const txPct = parseFloat(pin.getAttribute('data-target-x') || '50');
+          const tyPct = parseFloat(pin.getAttribute('data-target-y') || '50');
+          pin.style.left = `${(localImgRect.left + localImgRect.width * (txPct / 100)).toFixed(1)}px`;
+          pin.style.top = `${(localImgRect.top + localImgRect.height * (tyPct / 100)).toFixed(1)}px`;
+        });
+      }
+    }
+    return;
+  }
+
+  // 2d. window-callout standard mode (2-4 callouts): sizing, reticles, zero-drift connectors & portrait pins
   const mainWindow = document.querySelector('.wc-window-frame');
   const mainWrap = document.querySelector('.wc-window-wrap');
   const mainStage = document.querySelector('.wc-main-stage');
@@ -4674,6 +6963,8 @@ def render_brand_html(brand: dict[str, Any] | None) -> str:
     parts: list[str] = []
     if brand.get("icon"):
         parts.append(f'<img class="sc-brand-icon" src="{esc(brand["icon"])}" alt="">')
+    else:
+        parts.append('<span class="sc-brand-dot" aria-hidden="true"></span>')
     if brand.get("name"):
         parts.append(f'<span class="sc-brand-name">{esc(brand["name"])}</span>')
     if brand.get("name") and brand.get("tag"):
@@ -5176,6 +7467,7 @@ def build_gallery_wall_body(card: dict[str, Any]) -> str:
 def build_window_callout_body(card: dict[str, Any]) -> str:
     win = card["window"]
     callouts = card["callouts"]
+    wc_mode = card.get("wcMode", "standard")
     is_landscape = card["orientation"] == "landscape"
     is_split = is_landscape and card.get("arrangement", "split") == "split"
     win_tilt_cls = " is-tilted" if (is_landscape and card.get("tilt", False)) else ""
@@ -5189,6 +7481,178 @@ def build_window_callout_body(card: dict[str, Any]) -> str:
         if win.get("label")
         else ""
     )
+
+    # Mode A: 0-callout Stage Mode (e.g. wallpaper-stage hero presentation)
+    if wc_mode == "stage":
+        stage_lbl = card.get("stageLabel", "")
+        sculp_cls = "wc-stage-sculp is-cjk" if has_cjk(stage_lbl) else "wc-stage-sculp"
+        sculp_html = f'<div class="{sculp_cls}" aria-hidden="true">{esc(stage_lbl)}</div>' if stage_lbl else ""
+        stage_img_style = build_img_style(win["fit"], win["position"])
+        return f"""
+        <div class="wc-header">
+          {brand_html}
+          <div class="wc-title-row">
+            {render_title_html(card["title"])}
+            {render_subtitle_html(card["subtitle"])}
+          </div>
+        </div>
+        <div class="wc-stage-center">
+          <div class="wc-stage-wrap">
+            {sculp_html}
+            <div class="wc-stage-bezel">
+              <div class="wc-stage-inner"{win_style_attr}>
+                <img src="{esc(win["image"])}" alt="{esc(win["label"] or card["title"])}" style="{stage_img_style}">
+              </div>
+            </div>
+          </div>
+        </div>
+        {render_footer_html(card["footer"])}
+        """
+
+    # Mode B: 1-callout Single-Point Detail Loupe Mode
+    if wc_mode == "loupe" and callouts:
+        co = callouts[0]
+        media_bg = build_bg_style(co.get("bg", ""))
+        media_style_attr = f' style="{media_bg}"' if media_bg else ""
+        co_img_style = build_img_style(co["fit"], co["position"])
+        contain_cls = " is-contain" if co["fit"] == "contain" else ""
+        dim_fill = (
+            "rgba(6, 8, 12, 0.46)"
+            if card["theme"] in ("dark-studio", "wallpaper-stage")
+            else "rgba(15, 23, 42, 0.24)"
+        )
+        kicker_text = co.get("eyebrow") or co.get("tag") or ""
+        kicker_html = f'<div class="wc-loupe-kicker">{esc(kicker_text)}</div>' if kicker_text else ""
+        desc_html = f'<p class="wc-loupe-desc">{esc(co["caption"])}</p>' if co.get("caption") else ""
+        specs_html = ""
+        if co.get("specs"):
+            spec_spans = "".join(
+                f'<span>{esc(sp["label"])} <strong>{esc(sp["value"])}</strong></span>'
+                for sp in co["specs"]
+            )
+            specs_html = f'<div class="wc-loupe-metrics">{spec_spans}</div>'
+        tw = co.get("targetW") if co.get("targetW") is not None else 48.0
+        th = co.get("targetH") if co.get("targetH") is not None else 18.0
+        mask_id = f"wc-spot-mask-{re.sub(r'[^A-Za-z0-9_-]', '', card['id'])}"
+        return f"""
+        <div class="wc-header">
+          {brand_html}
+          <div class="wc-title-row">
+            {render_title_html(card["title"])}
+            {render_subtitle_html(card["subtitle"])}
+          </div>
+        </div>
+        <div class="wc-loupe-grid">
+          <div class="wc-loupe-left">
+            <div class="wc-window-wrap">
+              <div class="wc-window-frame"{win_style_attr}>
+                <img src="{esc(win["image"])}" alt="{esc(win["label"] or card["title"])}" style="{win_img_style}">
+                <svg class="wc-focus-mask-svg" viewBox="0 0 796 661" preserveAspectRatio="none" aria-hidden="true">
+                  <defs>
+                    <mask id="{mask_id}">
+                      <rect class="wc-mask-bg" x="0" y="0" width="796" height="661" fill="white"/>
+                      <rect class="wc-mask-hole" x="6" y="530" width="396" height="124" rx="10" fill="black"/>
+                    </mask>
+                  </defs>
+                  <rect class="wc-mask-dim" x="0" y="0" width="796" height="661" fill="{dim_fill}" mask="url(#{mask_id})"/>
+                </svg>
+                <div class="wc-loupe-focus-box">
+                  <span class="wc-anchor-dot" aria-hidden="true"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="wc-loupe-gutter" aria-hidden="true"></div>
+          <div class="wc-loupe-right">
+            <div class="wc-loupe-sculp" aria-hidden="true">{esc(co["index"])}</div>
+            <div class="wc-loupe-card" data-target-x="{co["targetX"]}" data-target-y="{co["targetY"]}" data-target-w="{tw}" data-target-h="{th}">
+              <div class="wc-loupe-card-inner">
+                <div class="wc-loupe-media{contain_cls}"{media_style_attr}>
+                  <img src="{esc(co["image"])}" alt="{esc(co["title"])}" style="{co_img_style}">
+                </div>
+                <div class="wc-loupe-body">
+                  {kicker_html}
+                  <h2 class="wc-loupe-title">{esc(co["title"])}</h2>
+                  {desc_html}
+                  {specs_html}
+                </div>
+              </div>
+              <span class="wc-target-dot" aria-hidden="true"></span>
+            </div>
+          </div>
+        </div>
+        {render_footer_html(card["footer"])}
+        <svg class="sc-connectors" aria-hidden="true"></svg>
+        """
+
+    # Mode C: Blueprint CAD Mode (orthogonal dashed leader lines + spec column + metadata)
+    if wc_mode == "blueprint":
+        stage_lbl = card.get("stageLabel") or "SPEC 01"
+        sculp_cls = "wc-bp-sculp is-cjk" if has_cjk(stage_lbl) else "wc-bp-sculp"
+        sculp_html = f'<div class="{sculp_cls}" aria-hidden="true">{esc(stage_lbl)}</div>'
+        bp_pins = ""
+        if not is_landscape:
+            bp_pins = "".join(
+                f'<span class="wc-pin-marker" data-target-x="{co["targetX"]}" data-target-y="{co["targetY"]}" '
+                f'style="left:{co["targetX"]}%;top:{co["targetY"]}%;">{esc(co["index"])}</span>'
+                for co in callouts
+            )
+        spec_blocks: list[str] = []
+        for idx, co in enumerate(callouts):
+            code_text = co.get("eyebrow") or (
+                f"A·{co['index']} · {co['tag']}" if co.get("tag") else f"A·{co['index']}"
+            )
+            desc_html = f'<p class="wc-bp-text">{esc(co["caption"])}</p>' if co.get("caption") else ""
+            spec_blocks.append(
+                f'<div class="wc-bp-item" data-callout-idx="{idx}" '
+                f'data-target-x="{co["targetX"]}" data-target-y="{co["targetY"]}">'
+                f'<span class="wc-bp-target-dot" aria-hidden="true"></span>'
+                f'<div class="wc-bp-code">{esc(code_text)}</div>'
+                f'<h2 class="wc-bp-heading">{esc(co["title"])}</h2>'
+                f"{desc_html}</div>"
+            )
+        meta_html = ""
+        if card.get("specs"):
+            meta_rows = "".join(
+                f'<div class="wc-bp-meta-row"><em>{esc(sp["label"])}</em><strong>{esc(sp["value"])}</strong></div>'
+                for sp in card["specs"]
+            )
+            meta_html = f'<div class="wc-bp-meta">{meta_rows}</div>'
+        vp_html = (
+            f'<div class="wc-bp-viewport-label">{esc(card["viewportLabel"])}</div>'
+            if card.get("viewportLabel")
+            else ""
+        )
+        return f"""
+        <div class="wc-header">
+          {brand_html}
+          <div class="wc-title-row">
+            {render_title_html(card["title"])}
+            {render_subtitle_html(card["subtitle"])}
+          </div>
+        </div>
+        <div class="wc-bp-body">
+          <div class="wc-bp-left">
+            <div class="wc-window-wrap">
+              {sculp_html}
+              <div class="wc-window-frame wc-bp-specimen"{win_style_attr}>
+                <img src="{esc(win["image"])}" alt="{esc(win["label"] or card["title"])}" style="{win_img_style}">
+                {bp_pins}
+              </div>
+            </div>
+          </div>
+          <div class="wc-bp-gutter" aria-hidden="true"></div>
+          <div class="wc-bp-right">
+            <div class="wc-bp-items count-{len(callouts)}">{"".join(spec_blocks)}</div>
+            {meta_html}
+          </div>
+        </div>
+        {vp_html}
+        {render_footer_html(card["footer"])}
+        <svg class="sc-connectors" aria-hidden="true"></svg>
+        """
+
+    # Mode D: Standard 2-4 callout split / stacked mode (existing v0.3.0 behavior)
 
     # In-plane focus reticles/pinpoints on landscape; high-contrast numbered pins on portrait/square.
     markers_html = ""
@@ -5603,6 +8067,230 @@ def build_workflow_steps_body(card: dict[str, Any]) -> str:
     """
 
 
+def build_split_compare_body(card: dict[str, Any]) -> str:
+    before = card["before"]
+    after = card["after"]
+    split_pct = card.get("splitPercent", 50.0)
+    brand_html = render_brand_html(card["brand"])
+
+    before_lbl_cls = "sp-sculp-label sp-sculp-before is-cjk" if has_cjk(before["label"]) else "sp-sculp-label sp-sculp-before"
+    after_lbl_cls = "sp-sculp-label sp-sculp-after is-cjk" if has_cjk(after["label"]) else "sp-sculp-label sp-sculp-after"
+
+    frame_bg = build_bg_style(after.get("bg") or before.get("bg") or "")
+    frame_attr = f' style="{frame_bg}"' if frame_bg else ""
+    left_img_style = build_img_style(before["fit"], before["position"])
+    right_img_style = build_img_style(after["fit"], after["position"])
+
+    caption_row = ""
+    if before.get("caption") or after.get("caption"):
+        left_cap = f'<span class="sp-caption sp-caption-left">{esc(before["caption"])}</span>' if before.get("caption") else "<span></span>"
+        right_cap = f'<span class="sp-caption sp-caption-right">{esc(after["caption"])}</span>' if after.get("caption") else "<span></span>"
+        caption_row = f'<div class="sp-caption-row">{left_cap}{right_cap}</div>'
+
+    return f"""
+    <div class="sp-bg-shift" style="--split-pct:{split_pct:g}%;" aria-hidden="true"></div>
+    <div class="sp-seam-ray" style="--split-pct:{split_pct:g}%;" aria-hidden="true"></div>
+    <header class="sp-header">
+      {brand_html}
+      {render_title_html(card["title"])}
+      {render_subtitle_html(card["subtitle"])}
+    </header>
+    <div class="sp-stage" style="--split-pct:{split_pct:g}%;">
+      <div class="sp-column">
+        <div class="sp-occluded-row" aria-hidden="true">
+          <span class="{before_lbl_cls}">{esc(before["label"])}</span>
+          <span class="{after_lbl_cls}">{esc(after["label"])}</span>
+        </div>
+        <div class="sp-frame-wrap">
+          <div class="sp-frame"{frame_attr}>
+            <img class="sp-img sp-img-left" src="{esc(before["image"])}" alt="{esc(before["label"])}" style="{left_img_style}">
+            <img class="sp-img sp-img-right" src="{esc(after["image"])}" alt="{esc(after["label"])}" style="{right_img_style}">
+            <div class="sp-divider-line" aria-hidden="true"></div>
+            <div class="sp-divider-handle" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M7.5 6L3.5 10L7.5 14" stroke="#0f172a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12.5 6L16.5 10L12.5 14" stroke="{esc(card["accent"])}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        {caption_row}
+      </div>
+    </div>
+    {render_footer_html(card["footer"])}
+    """
+
+
+def build_device_pair_body(card: dict[str, Any]) -> str:
+    desktop = card["desktop"]
+    mobile = card["mobile"]
+    brand_html = render_brand_html(card["brand"])
+
+    desk_lbl_cls = "dp-sculp-tag dp-sculp-desktop is-cjk" if has_cjk(desktop["label"]) else "dp-sculp-tag dp-sculp-desktop"
+    mob_lbl_cls = "dp-sculp-tag dp-sculp-mobile is-cjk" if has_cjk(mobile["label"]) else "dp-sculp-tag dp-sculp-mobile"
+
+    desk_bg = build_bg_style(desktop.get("bg", ""))
+    desk_attr = f' style="{desk_bg}"' if desk_bg else ""
+    desk_img_style = build_img_style(desktop["fit"], desktop["position"])
+
+    mob_bg = build_bg_style(mobile.get("bg", ""))
+    mob_attr = f' style="{mob_bg}"' if mob_bg else ""
+    mob_img_style = build_img_style(mobile["fit"], mobile["position"])
+
+    safe_top_color = mobile.get("safeTopBg") or mobile.get("bg") or ""
+    if safe_top_color:
+        safe_top_html = (
+            f'<div class="dp-mobile-safe-top" style="background:{esc(safe_top_color)};">'
+            f'<div class="dp-dynamic-island"></div></div>'
+        )
+    else:
+        safe_top_html = (
+            '<div class="dp-mobile-safe-top is-overlay">'
+            '<div class="dp-dynamic-island"></div></div>'
+        )
+
+    footer_html = (
+        f'<div class="dp-footer-meta">{esc_multiline(card["footer"])}</div>'
+        if card.get("footer")
+        else ""
+    )
+
+    return f"""
+    <header class="dp-header">
+      {brand_html}
+      {render_title_html(card["title"])}
+      {render_subtitle_html(card["subtitle"])}
+    </header>
+    <div class="{desk_lbl_cls}" aria-hidden="true">{esc(desktop["label"])}</div>
+    <div class="{mob_lbl_cls}" aria-hidden="true">{esc(mobile["label"])}</div>
+    <div class="dp-desktop-frame"{desk_attr}>
+      <img src="{esc(desktop["image"])}" alt="{esc(desktop["label"])}" style="{desk_img_style}">
+    </div>
+    <div class="dp-mobile-wrap">
+      <div class="dp-mobile-screen"{mob_attr}>
+        {safe_top_html}
+        <div class="dp-mobile-img-wrap">
+          <img src="{esc(mobile["image"])}" alt="{esc(mobile["label"])}" style="{mob_img_style}">
+        </div>
+        <div class="dp-mobile-home-bar" aria-hidden="true"></div>
+        <div class="dp-mobile-rim" aria-hidden="true"></div>
+      </div>
+    </div>
+    {footer_html}
+    """
+
+
+def format_version_html(version: str) -> str:
+    """Format a version string like 'v0.4' with muted 'v' prefix and accent dots."""
+    text = version.strip()
+    if not text:
+        return ""
+    parts: list[str] = []
+    if len(text) > 1 and text[0] in ("v", "V") and text[1].isdigit():
+        parts.append(f'<span class="cl-version-v">{esc(text[0])}</span>')
+        rest = text[1:]
+    else:
+        rest = text
+    for ch in rest:
+        if ch == ".":
+            parts.append('<span class="cl-version-dot">.</span>')
+        else:
+            parts.append(esc(ch))
+    return "".join(parts)
+
+
+def build_changelog_card_body(card: dict[str, Any]) -> str:
+    shot = card["shot"]
+    highlights = card["highlights"]
+    brand_html = render_brand_html(card["brand"])
+
+    title_cls = "cl-release-title is-cjk" if has_cjk(card["title"]) else "cl-release-title"
+    hl_items: list[str] = []
+    for hl in highlights:
+        desc_html = f'<div class="cl-hl-desc">{esc(hl["desc"])}</div>' if hl.get("desc") else ""
+        hl_items.append(
+            f'<div class="cl-hl-item">'
+            f'<div class="cl-hl-idx">{esc(hl["index"])}</div>'
+            f'<div><div class="cl-hl-title">{esc(hl["title"])}</div>{desc_html}</div>'
+            f"</div>"
+        )
+
+    left_footer_html = (
+        f'<div class="cl-left-footer">{esc_multiline(card["footer"])}</div>'
+        if card.get("footer")
+        else ""
+    )
+
+    tag_text = shot.get("tag", "")
+    tag_cls = "cl-sculp-tag is-cjk" if has_cjk(tag_text) else "cl-sculp-tag"
+    tag_html = f'<div class="{tag_cls}" aria-hidden="true">{esc(tag_text)}</div>' if tag_text else ""
+
+    shot_bg = build_bg_style(shot.get("bg", ""))
+    shot_attr = f' style="{shot_bg}"' if shot_bg else ""
+    shot_img_style = build_img_style(shot["fit"], shot["position"])
+
+    shot_caption_html = ""
+    if shot.get("metaLeft") or shot.get("metaRight"):
+        shot_caption_html = (
+            f'<div class="cl-shot-caption">'
+            f'<span>{esc(shot.get("metaLeft", ""))}</span>'
+            f'<span>{esc(shot.get("metaRight", ""))}</span>'
+            f"</div>"
+        )
+
+    return f"""
+    <aside class="cl-left-col">
+      <div class="cl-top-block">
+        {brand_html}
+        <div class="cl-version-stage">
+          <div class="cl-version-num">{format_version_html(card["version"])}</div>
+        </div>
+        <h1 class="{title_cls}">{esc_multiline(card["title"])}</h1>
+      </div>
+      <div class="cl-highlights count-{len(highlights)}">{"".join(hl_items)}</div>
+      {left_footer_html}
+    </aside>
+    <div class="cl-shot-stage">
+      {tag_html}
+      <div class="cl-shot-frame"{shot_attr}>
+        <img src="{esc(shot["image"])}" alt="{esc(card["title"])}" style="{shot_img_style}">
+      </div>
+      {shot_caption_html}
+    </div>
+    """
+
+
+def build_blueprint_backdrop_html(card: dict[str, Any]) -> str:
+    """Render architectural drafting grid, registration crosshairs, and perimeter coordinate ticks."""
+    w, h = card["width"], card["height"]
+    accent = card["accent"]
+    crosshairs: list[str] = []
+    for gx in range(160, w, 160):
+        for gy in range(160, h, 160):
+            crosshairs.append(
+                f'<g stroke="{esc(accent)}" stroke-opacity="0.30" stroke-width="1">'
+                f'<line x1="{gx - 5}" y1="{gy}" x2="{gx + 5}" y2="{gy}"/>'
+                f'<line x1="{gx}" y1="{gy - 5}" x2="{gx}" y2="{gy + 5}"/>'
+                f"</g>"
+            )
+    grid_label = card.get("gridLabel") or "SCALE 2:1 · GRID 40PX"
+    tick_count = 5 if w >= 1200 else 3
+    ticks: list[str] = []
+    for i in range(tick_count):
+        tx = int(round((w / tick_count) * (i + 0.5) - 16))
+        ticks.append(f'<div class="bp-axis-x" style="left:{tx}px;" aria-hidden="true">X·{i + 1:02d}</div>')
+
+    return (
+        '<div class="bp-grid-bg" aria-hidden="true"></div>'
+        f'<svg class="bp-drafting-svg" viewBox="0 0 {w} {h}" aria-hidden="true">'
+        f'<rect x="28" y="24" width="{w - 56}" height="{h - 58}" fill="none" stroke="rgba(15, 23, 42, 0.12)" stroke-width="1"/>'
+        f'{"".join(crosshairs)}'
+        "</svg>"
+        f'<div class="bp-margin-top" aria-hidden="true">{esc(grid_label)}</div>'
+        f'{"".join(ticks)}'
+    )
+
+
 def build_card_html(card: dict[str, Any], fonts_css_href: str) -> str:
     layout = card["layout"]
     if layout == "layered-hero":
@@ -5621,6 +8309,12 @@ def build_card_html(card: dict[str, Any], fonts_css_href: str) -> str:
         body_inner = build_before_after_body(card)
     elif layout == "workflow-steps":
         body_inner = build_workflow_steps_body(card)
+    elif layout == "split-compare":
+        body_inner = build_split_compare_body(card)
+    elif layout == "device-pair":
+        body_inner = build_device_pair_body(card)
+    elif layout == "changelog-card":
+        body_inner = build_changelog_card_body(card)
     else:
         raise ValueError(f"不支持的版式：{layout}")
 
@@ -5630,11 +8324,19 @@ def build_card_html(card: dict[str, Any], fonts_css_href: str) -> str:
     arrange_cls = (
         f" arrange-{card['arrangement']}" if layout == "window-callout" else ""
     )
+    wc_mode_cls = (
+        f" wc-mode-{card.get('wcMode', 'standard')}" if layout == "window-callout" else ""
+    )
     ba_orient_cls = (
         f" ba-orient-{card['compareOrientation']}" if layout == "before-after" else ""
     )
     ws_style_cls = (
         f" ws-style-{card.get('wsStyle', 'row')}" if layout == "workflow-steps" else ""
+    )
+    stage_palette_cls = (
+        f" stage-palette-{card.get('stagePalette', 'twilight')}"
+        if card["theme"] == "wallpaper-stage"
+        else ""
     )
     tilt_cls = " is-tilted" if card.get("tilt", False) else ""
     theme_cls = f"theme-{card['theme']}"
@@ -5642,6 +8344,9 @@ def build_card_html(card: dict[str, Any], fonts_css_href: str) -> str:
     tall_cls = " is-tall" if card.get("isTall") else ""
     extra_script = (
         CONNECTOR_SCRIPT if layout in ("section-assembly", "window-callout") else ""
+    )
+    blueprint_backdrop = (
+        build_blueprint_backdrop_html(card) if card["theme"] == "blueprint-grid" else ""
     )
     grain_freq = THEME_GRAIN_FREQUENCY.get(card["theme"], "0.86")
     w, h = card["width"], card["height"]
@@ -5666,11 +8371,12 @@ def build_card_html(card: dict[str, Any], fonts_css_href: str) -> str:
   <link rel="stylesheet" href="{esc(fonts_css_href)}">
   <style>{COMMON_CSS}</style>
 </head>
-<body class="{esc(theme_cls)}">
+<body class="{esc(theme_cls)}{esc(stage_palette_cls)}">
   <main
-    class="sc-canvas {esc(theme_cls)} {esc(display_cls)} layout-{esc(layout)} orient-{esc(card["orientation"])}{tall_cls}{variant_cls}{arrange_cls}{ba_orient_cls}{ws_style_cls}{tilt_cls}"
+    class="sc-canvas {esc(theme_cls)}{esc(stage_palette_cls)} {esc(display_cls)} layout-{esc(layout)} orient-{esc(card["orientation"])}{tall_cls}{variant_cls}{arrange_cls}{wc_mode_cls}{ba_orient_cls}{ws_style_cls}{tilt_cls}"
     style="--canvas-w:{w}px;--canvas-h:{h}px;--accent:{esc(card["accent"])};--accent-ink:{esc(card["accentInk"])};"
   >
+    {blueprint_backdrop}
     <div class="sc-studio-keylight" aria-hidden="true"></div>
     <div class="sc-ambient-bounce" aria-hidden="true"></div>
     {body_inner}
@@ -5734,6 +8440,32 @@ def build_contact_sheet_html(
             "badge_ink": "#4b525e",
             "dim": "#7a828f",
             "link_line": "rgba(20,23,29,0.28)",
+            "heading_font": "'Inter', 'PingFang SC', sans-serif",
+        },
+        "wallpaper-stage": {
+            "bg": "#141226",
+            "ink": "#ffffff",
+            "sub": "#c4bed6",
+            "card": "#1c1934",
+            "thumb": "#100e20",
+            "border": "rgba(255,255,255,0.14)",
+            "badge_bg": "rgba(255,255,255,0.10)",
+            "badge_ink": "#e4def4",
+            "dim": "#9c96b2",
+            "link_line": "rgba(255,255,255,0.30)",
+            "heading_font": "'Inter', 'PingFang SC', sans-serif",
+        },
+        "blueprint-grid": {
+            "bg": "#f3f5f8",
+            "ink": "#0b1220",
+            "sub": "#475569",
+            "card": "#ffffff",
+            "thumb": "#e8edf4",
+            "border": "rgba(15,23,42,0.14)",
+            "badge_bg": "rgba(29,78,216,0.08)",
+            "badge_ink": "#1d4ed8",
+            "dim": "#64748b",
+            "link_line": "rgba(29,78,216,0.34)",
             "heading_font": "'Inter', 'PingFang SC', sans-serif",
         },
     }

@@ -16,9 +16,9 @@
 
 ---
 
-## 全部 8 种内置版式实拍示例
+## 5 套主题与 11 种内置版式实拍示例
 
-以下展板均由 `oil-showcase` 基于 **Oil Studio** 与 **Oil UI** 真实界面截图在本地直接渲染，完整覆盖 8 种版式与 3 套内置摄影棚布光的中性主题（`warm-paper`、`dark-studio`、`cool-gallery`）。需要细读界面的版式默认横平竖直（`0°`）以保持最高清锐度，并统一采用纯代码左上主光、微颗粒质感与卡片后遮挡雕塑字。
+以下展板均由 `oil-showcase` 基于 **Oil Studio** 与 **Oil UI** 真实界面截图在本地直接渲染，完整覆盖 11 种版式（含单点聚光放大镜、居中舞台与工程蓝图标注）与 5 套纯代码主题（`warm-paper`、`dark-studio`、`cool-gallery`、`wallpaper-stage`、`blueprint-grid`）。细读版式默认横平竖直（`0°`）以保持最高清锐度，并统一采用纯代码布光、微颗粒质感与卡片后遮挡雕塑字。
 
 <p align="center">
   <img src="./assets/readme/01-window-callout-studio.webp" width="100%" alt="dark-studio 主题 window-callout 版式，展示 Oil Studio 桌面剪辑工作台、端正高清画面、卡片后遮挡 01-03 序号与发光虚线标线">
@@ -28,6 +28,36 @@
 </p>
 
 <table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/11-split-compare-cairn.webp" width="100%" alt="cool-gallery 主题 split-compare 版式，用发光中轴将 Cairn 原始冰川底图与完整实时界面按像素精确分屏对比">
+      <br><sub><code>cool-gallery</code> · <code>split-compare</code> · <code>16:9</code> — 单画框像素对齐左右分屏对比（Oil UI · Cairn）</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/12-device-pair-aquarelle.webp" width="100%" alt="warm-paper 主题 device-pair 版式，同屏展示 Aquarelle 桌面端主窗口与右下角暗钛金属 iOS 手机框">
+      <br><sub><code>warm-paper</code> · <code>device-pair</code> · <code>16:9</code> — 桌面端 + 手机端响应式同屏展示（Oil UI · Aquarelle）</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/13-detail-loupe-studio.webp" width="100%" alt="dark-studio 主题单点聚光放大镜模式，以 SVG 挖空聚光遮罩突出 Oil Studio 自动缩放时间轴并连线至 2.4 倍放大卡">
+      <br><sub><code>dark-studio</code> · <code>window-callout</code>（单点放大镜）· <code>16:9</code> — 聚光遮罩与 2.4× 局部放大卡（Oil Studio）</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/14-changelog-studio.webp" width="100%" alt="cool-gallery 主题 changelog-card 版式，左侧展示 Oil Studio v0.4 大号版本号与三条版本亮点，右侧配旗舰界面截图">
+      <br><sub><code>cool-gallery</code> · <code>changelog-card</code> · <code>16:9</code> — 版本发布公告与亮点总览卡（Oil Studio v0.4）</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/15-wallpaper-stage-studio.webp" width="100%" alt="wallpaper-stage 主题居中单窗舞台，在纯代码暮色梅紫与暖琥珀渐变网格上以磨砂玻璃外框托起 Oil Studio 主窗口">
+      <br><sub><code>wallpaper-stage</code> · <code>window-callout</code>（单窗舞台）· <code>16:9</code> — 纯代码暮色渐变网格与磨砂玻璃外框（Oil Studio）</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./assets/readme/16-blueprint-grid-plinth.webp" width="100%" alt="blueprint-grid 主题工程蓝图标注卡，在 40px 制图网格与十字套准标上以钴蓝正交虚线标注解剖 Plinth 空间工作流">
+      <br><sub><code>blueprint-grid</code> · <code>window-callout</code>（工程蓝图）· <code>16:9</code> — 建筑制图网格与正交规格标线（Oil UI · Plinth）</sub>
+    </td>
+  </tr>
   <tr>
     <td width="50%" valign="top">
       <img src="./assets/readme/02-before-after-cool.webp" width="100%" alt="cool-gallery 主题左右并排 before-after 版式，对比原始生物荧光 X 光底图与完整的 Helixa 分子计算首屏">
@@ -131,8 +161,8 @@ npx skills add oil-oil/oil-showcase
 
 | 维度 | 支持选项 |
 | --- | --- |
-| **3 套摄影棚布光主题** | `warm-paper`（暖棉纸衬线，默认）、`dark-studio`（深色阳极哑光无衬线）、`cool-gallery`（冷灰建筑哑光无衬线）。内置左上主光、内联 SVG 颗粒质感、高光描边与克制 `accent` 注入。 |
-| **8 种内置版式** | `window-callout`（`split` / `stacked`）、`before-after`（并排 / 上下堆叠 + 光学裁切线）、`workflow-steps`（`row` / `staged`）、`layered-hero`、`layered-bento`、`section-assembly`、`module-bento`、`gallery-wall`；细读版式默认 `0°` 横平竖直保高清（`tilt` 按需开启）。 |
+| **5 套纯代码主题** | `warm-paper`（暖棉纸衬线）、`dark-studio`（深色阳极哑光无衬线）、`cool-gallery`（冷灰建筑哑光无衬线）、`wallpaper-stage`（`twilight`/`ocean`/`sunset`/`emerald` 氛围渐变网格 + 磨砂玻璃外框）、`blueprint-grid`（`#F3F5F8` 制图网格 + 套准十字标 + 坐标刻度）。 |
+| **11 种内置版式** | `split-compare`、`device-pair`、`changelog-card`、`window-callout`（0 标注单窗舞台 / 单点聚光放大镜 / 2–4 点 `split` 或 `stacked` / `blueprint-grid` 正交标线）、`before-after`（并排 / 上下堆叠 + 光学裁切线）、`workflow-steps`（`row` / `staged`）、`layered-hero`、`layered-bento`、`section-assembly`、`module-bento`、`gallery-wall`；细读版式默认 `0°` 横平竖直保高清。 |
 | **5 种预设画幅** | `16:9`（`@2x` `3200×1800`）、`4:3`（`2880×2160`）、`3:4`（`2160×2880`）、`9:16`（`2160×3840`）、`1:1`（`2400×2400`），并支持 `400–4000` 范围内的自定义 `WxH` 像素视口。 |
 
 ---
